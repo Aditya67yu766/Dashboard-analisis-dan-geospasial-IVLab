@@ -500,9 +500,9 @@ function App() {
   return (
     <div className={`app-shell${page === 'charts' || page === 'map' ? ' dash-mode' : ''}`}>
       <header className="site-header">
-        <button className="brand" onClick={() => navigate('home')} aria-label="LAVIDA beranda">
+        <button className="brand" onClick={() => navigate('home')} aria-label="Pantau Penyakit beranda">
           <img className="brand-logo" src="/logo-bv-lampung.png" alt="" />
-          <span><strong>LAVIDA</strong><small>Balai Veteriner Lampung</small></span>
+          <span><strong>Pantau Penyakit</strong><small>Balai Veteriner Lampung</small></span>
         </button>
         <nav className="main-nav" aria-label="Navigasi utama">
           {navItems.map(([target, label]) => (
@@ -602,7 +602,7 @@ function App() {
       {page === 'map' ? <MapPage theme={theme} /> : null}
 
       <footer className="site-footer">
-        <span>LAVIDA · Balai Veteriner Lampung</span>
+        <span>Pantau Penyakit · Balai Veteriner Lampung</span>
         <span>Data IV Lab · {new Date().getFullYear()}</span>
       </footer>
 

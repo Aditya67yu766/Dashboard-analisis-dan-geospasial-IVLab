@@ -38,7 +38,7 @@ export default function LoginPage({ configured: isConfigured, busy, flash, flash
         </form>
         <div className="auth-foot">Akses admin dikelola melalui Supabase Authentication. Login perlu diulang setelah halaman dimuat ulang.</div>
       </section>
-      <div className="auth-side"><span className="eyebrow eyebrow-light">LAVIDA · Lampung Veterinary Information & Data Analytics Dashboard</span><p>Pencatatan sampel dan hasil uji laboratorium veteriner.</p></div>
+      <div className="auth-side"><span className="eyebrow eyebrow-light">Pantau Penyakit · Balai Veteriner Lampung</span><p>Platform pemantauan penyakit hewan dan hasil uji laboratorium veteriner.</p></div>
     </main>
   );
 }
