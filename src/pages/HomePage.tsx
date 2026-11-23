@@ -43,7 +43,10 @@ function SummaryPanel({ summary }: { summary: Summary | null }) {
         <span>Ringkasan data</span>
         <span className="summary-live"><span className="live-dot" aria-hidden="true" />Diperbarui otomatis</span>
       </div>
-      <div className="summary-main">
+      <div
+        className="summary-main"
+        title="Jumlah seluruh baris hasil uji yang diimpor atau dimasukkan admin ke Supabase."
+      >
         <strong>{display(summary?.total)}</strong>
         <span>Sampel tercatat</span>
       </div>

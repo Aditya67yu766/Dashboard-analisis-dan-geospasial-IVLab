@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Chart from 'chart.js/auto';
 import type { ChartConfiguration, Plugin } from 'chart.js';
-import { supabase } from '../api/supabase';
+import { clearDashboardCache, getDashboardData } from '../api/dashboardData';
 import MultiSelect from '../components/MultiSelect';
 import { numberFormat } from '../lib/constants';
 import { diseaseGroup } from '../lib/peta';
-import type { ChartKey, ChartRow, DashboardData, MapRow } from '../types';
+import type { ChartKey, ChartRow, MapRow } from '../types';
 import '../styles/charts.css';
 
 type ViewKey = Exclude<ChartKey, 'by_disease_month' | 'by_regency_month' | 'by_district_month'> | 'by_disease' | 'by_regency' | 'by_district';
@@ -286,7 +286,6 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
   const [outbreakDiseases, setOutbreakDiseases] = useState<Set<string>>(new Set());
   const [outbreakMonths, setOutbreakMonths] = useState<Set<string>>(new Set());
   const [outbreakShowPositive, setOutbreakShowPositive] = useState(true);
-  const [outbreakShowSeropositive, setOutbreakShowSeropositive] = useState(true);
   const [showPositive, setShowPositive] = useState(true);
   const [showSeropositive, setShowSeropositive] = useState(true);
   const [query, setQuery] = useState('');
@@ -295,38 +294,25 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const canvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
   const outbreakPositiveCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const outbreakSeroCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!supabase) {
-        setError('Supabase belum dikonfigurasi. Isi .env.local lalu muat ulang halaman.');
-        setLoading(false);
-        return;
-      }
       setLoading(true);
       setError('');
-      const { data, error: rpcError } = await supabase.rpc('public_iv_lab_dashboard_data');
-      if (cancelled) return;
-      if (rpcError) {
+      try {
+        const payload = await getDashboardData();
+        if (cancelled) return;
+        setCharts(payload.charts);
+        setMapRows(Array.isArray(payload.map) ? payload.map : []);
+        setLoading(false);
+      } catch (loadError) {
+        if (cancelled) return;
         setCharts(null);
         setMapRows([]);
-        setError(rpcError.message);
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
         setLoading(false);
-        return;
       }
-      const payload = data as DashboardData | null;
-      if (!payload?.charts) {
-        setCharts(null);
-        setMapRows([]);
-        setError('Data ringkasan dari Supabase tidak tersedia.');
-        setLoading(false);
-        return;
-      }
-      setCharts(payload.charts);
-      setMapRows(Array.isArray(payload.map) ? payload.map : []);
-      setLoading(false);
     }
     void load();
     return () => { cancelled = true; };
@@ -504,9 +490,7 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
     const isOutbreakYearly = selectedYears.size > 1;
 
     const positiveMonthly = new Map<string, number>();
-    const seroMonthly = new Map<string, number>();
     const positiveYearly = new Map<string, number>();
-    const seroYearly = new Map<string, number>();
 
     rows.forEach((row) => {
       const label = String(row.label ?? '');
@@ -514,10 +498,8 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
       const key = isOutbreakYearly ? year : label;
       if (isOutbreakYearly) {
         positiveYearly.set(key, (positiveYearly.get(key) ?? 0) + (Number(row.positive) || 0));
-        seroYearly.set(key, (seroYearly.get(key) ?? 0) + (Number(row.seropositive) || 0));
       } else {
         positiveMonthly.set(label, (positiveMonthly.get(label) ?? 0) + (Number(row.positive) || 0));
-        seroMonthly.set(label, (seroMonthly.get(label) ?? 0) + (Number(row.seropositive) || 0));
       }
     });
 
@@ -537,7 +519,6 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
         ).size;
     return {
       positive: isOutbreakYearly ? buildOutbreakSeriesYearly(positiveYearly) : buildOutbreakSeries(positiveMonthly),
-      seropositive: isOutbreakYearly ? buildOutbreakSeriesYearly(seroYearly) : buildOutbreakSeries(seroMonthly),
       provinceLabel,
       diseaseLabel,
       targets,
@@ -728,7 +709,6 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
   useEffect(() => {
     if (tab !== 'outbreak') return;
     const positiveColor = cssColor('--pos', '#c4402f');
-    const seroColor = cssColor('--neg', '#4a8a4f');
     const warningColor = cssColor('--unk', '#b8860b');
     const ink = cssColor('--ink', '#232b20');
     const muted = cssColor('--muted', '#5e6858');
@@ -827,9 +807,8 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
     };
 
     if (outbreakShowPositive) render(outbreakPositiveCanvasRef.current, outbreak.positive, 'Positif', positiveColor);
-    if (outbreakShowSeropositive) render(outbreakSeroCanvasRef.current, outbreak.seropositive, 'Seropositif', seroColor);
     return () => instances.forEach((chart) => chart.destroy());
-  }, [tab, outbreak, theme, outbreakShowPositive, outbreakShowSeropositive]);
+  }, [tab, outbreak, theme, outbreakShowPositive]);
 
   const searchedRows = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -988,7 +967,11 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
           <p>Ringkasan sampel, hasil positif, dan seropositif dari data yang tersimpan di panel admin.</p>
         </div>
         <div className="dash-head-actions">
-          <button className="button button-outline" onClick={() => setReloadKey((key) => key + 1)} disabled={loading}>
+          <button
+            className="button button-outline"
+            onClick={() => { clearDashboardCache(); setReloadKey((key) => key + 1); }}
+            disabled={loading}
+          >
             {loading ? 'Memuat…' : 'Muat ulang data'}
           </button>
         </div>
@@ -1017,6 +1000,26 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
 
       {!loading && !error && hasData ? (
         <>
+          <section className={`dash-kpis kpi-${combinedMode ? 2 : 3}`} aria-label="Ringkasan angka">
+            <article className="dash-kpi positive">
+              <span>{combinedMode ? 'Positif / seropositif' : 'Positif'}</span>
+              <strong>{numberFormat.format(kpi.positive)}</strong>
+              <small>{percent(kpi.positive, kpi.total)} dari sampel</small>
+            </article>
+            {!combinedMode ? (
+              <article className="dash-kpi sero">
+                <span>Seropositif</span>
+                <strong>{numberFormat.format(kpi.seropositive)}</strong>
+                <small>{percent(kpi.seropositive, kpi.total)} dari sampel</small>
+              </article>
+            ) : null}
+            <article className="dash-kpi">
+              <span>Wilayah data</span>
+              <strong>{numberFormat.format(kpi.rows)}</strong>
+              <small>baris provinsi/tahun</small>
+            </article>
+          </section>
+
           <section className="dash-toolbar panel">
             <div className="dash-tabs" role="tablist" aria-label="Pilih tampilan dashboard">
               {visibleChartTabs.map((item) => (
@@ -1154,7 +1157,6 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
                 />
                 <div className="dash-checks" aria-label="Pilihan grafik outbreak">
                   <label><input type="checkbox" checked={outbreakShowPositive} onChange={(event) => setOutbreakShowPositive(event.target.checked)} /> Positif</label>
-                  <label><input type="checkbox" checked={outbreakShowSeropositive} onChange={(event) => setOutbreakShowSeropositive(event.target.checked)} /> Seropositif</label>
                 </div>
               </div>
               <div className="outbreak-chart-head">
@@ -1164,8 +1166,8 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
                 </p>
               </div>
 
-              {!outbreakShowPositive && !outbreakShowSeropositive ? (
-                <div className="dash-empty compact">Centang Positif dan/atau Seropositif untuk menampilkan grafik.</div>
+              {!outbreakShowPositive ? (
+                <div className="dash-empty compact">Centang Positif untuk menampilkan grafik.</div>
               ) : (
                 <div className="outbreak-series-grid">
                   {outbreakShowPositive ? (
@@ -1208,83 +1210,9 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
                       )}
                     </div>
                   ) : null}
-
-                  {outbreakShowSeropositive ? (
-                    <div className="outbreak-series panel">
-                      <div className="outbreak-series-head">
-                        <div>
-                          <h3>Seropositif – {outbreak.provinceLabel}</h3>
-                          <p>{outbreak.isYearly ? 'Tahun terakhir' : 'Bulan terakhir'}: <b>{numberFormat.format(outbreak.seropositive.lastValue)} kasus ({outbreak.seropositive.isOutbreak ? 'OUTBREAK' : 'AMAN'})</b></p>
-                        </div>
-                        <button
-                          className="button button-outline button-small"
-                          onClick={() => {
-                            const canvas = outbreakSeroCanvasRef.current;
-                            if (!canvas) return;
-                            const link = document.createElement('a');
-                            link.href = canvas.toDataURL('image/png');
-                            link.download = `batas_outbreak_seropositif_${fileSlugText(`${outbreak.provinceLabel}_${outbreak.diseaseLabel}`)}.png`;
-                            link.click();
-                          }}
-                          disabled={!outbreak.seropositive.series.length}
-                        >
-                          Unduh PNG
-                        </button>
-                      </div>
-                      {outbreak.seropositive.series.length ? (
-                        <>
-                          <div className="outbreak-chart-wrap">
-                            <canvas ref={outbreakSeroCanvasRef} role="img" aria-label="Grafik batas outbreak kasus seropositif" />
-                          </div>
-                          <div className="outbreak-legend" aria-label="Legenda batas outbreak seropositif">
-                            <span><i className="outbreak-legend-mean" />Rata-rata ({numberFormat.format(Math.round(outbreak.seropositive.mean))})</span>
-                            <span><i className="outbreak-legend-sd1" />+1 SD ({numberFormat.format(Math.round(outbreak.seropositive.upper1))})</span>
-                            <span><i className="outbreak-legend-sd2" />+2 SD ({numberFormat.format(Math.round(outbreak.seropositive.upper2))})</span>
-                            <span><i className="outbreak-legend-case" />Kasus seropositif</span>
-                          </div>
-                          <OutbreakTable data={outbreak.seropositive} name="Seropositif" />
-                        </>
-                      ) : (
-                        <div className="dash-empty compact">Belum ada data {outbreak.isYearly ? 'tahunan' : 'bulanan'} untuk filter ini.</div>
-                      )}
-                    </div>
-                  ) : null}
                 </div>
               )}
             </section>
-          ) : null}
-
-          {tab !== 'outbreak' ? (
-          <section className={`dash-kpis${diseaseMode ? ' is-disease' : ''}`} aria-label="Ringkasan angka">
-            <article className="dash-kpi">
-              <span>Total sampel</span>
-              <strong>{numberFormat.format(kpi.total)}</strong>
-              <small>
-                {selectedDiseases.size === 1
-                  ? `sampel diuji untuk ${[...selectedDiseases][0]}`
-                  : diseaseMode
-                    ? 'sampel per penyakit'
-                    : 'sampel unik per provinsi'}
-              </small>
-            </article>
-            <article className="dash-kpi positive">
-              <span>{combinedMode ? 'Positif / seropositif' : 'Positif'}</span>
-              <strong>{numberFormat.format(kpi.positive)}</strong>
-              <small>{percent(kpi.positive, kpi.total)} dari sampel</small>
-            </article>
-            {!combinedMode ? (
-              <article className="dash-kpi sero">
-                <span>Seropositif</span>
-                <strong>{numberFormat.format(kpi.seropositive)}</strong>
-                <small>{percent(kpi.seropositive, kpi.total)} dari sampel</small>
-              </article>
-            ) : null}
-            <article className="dash-kpi">
-              <span>Wilayah data</span>
-              <strong>{numberFormat.format(kpi.rows)}</strong>
-              <small>baris provinsi/tahun</small>
-            </article>
-          </section>
           ) : null}
 
           {tab !== 'table' && tab !== 'coverage' && tab !== 'outbreak' ? (

@@ -75,7 +75,7 @@ Setiap file CSV yang diimpor admin menambahkan baris ke tabel data yang sama. Gu
 
 ## Dashboard Olah Data dan Dashboard Peta
 
-Kedua dashboard adalah halaman React yang mengambil data agregat langsung dari fungsi Supabase `public_iv_lab_dashboard_data()`:
+Kedua dashboard adalah halaman React yang mengambil data agregat langsung dari fungsi Supabase `public_iv_lab_dashboard_data()`. Hasilnya di-cache di browser selama 5 menit melalui `src/api/dashboardData.ts`, sehingga berpindah antara Olah Data dan Peta Wilayah tidak perlu mengagregasi ulang seluruh data. Cache dibersihkan otomatis setelah admin menambah, mengimpor, atau menghapus data; tombol **Muat ulang data** pada masing-masing dashboard juga memaksa pengambilan data baru.
 
 - **Olah Data** (`src/pages/ChartsPage.tsx`): grafik dan tabel ringkasan sampel, positif, dan seropositif per metode uji, hari, bulan, tahun, dan provinsi. Dimensi **Per Metode Uji** dan **Per Penyakit** tersedia sebagai checkbox yang bisa dicentang keduanya; kedua grafik lalu ditampilkan bertumpuk ke bawah dengan tinggi baris yang longgar agar label tidak saling menimpa. Filter tahun/provinsi/penyakit juga berupa checkbox multi-select (AI/influenza digabung menjadi “Influenza”). Tersedia tab tabel dan cakupan data, pencarian, pengurutan, serta unduh CSV/PNG. Data per penyakit diambil dari baris `target` pada RPC dashboard; angka positif pada tampilan ini sudah termasuk seropositif.
 - **Peta Wilayah** (`src/pages/MapPage.tsx`): peta status wilayah per provinsi, kabupaten/kota, dan kecamatan dengan filter checkbox tahun, provinsi, kabupaten/kota, kecamatan, status, dan penyakit (bisa dipilih beberapa sekaligus). Tersedia mode presentasi, zoom/pan, sorotan batas wilayah beranimasi saat kursor melintas, label kecamatan kecil, grid koordinat di tepi peta, tabel wilayah, serta ekspor PNG, CSV, GeoJSON, cetak, dan **paket QGIS (.zip)**. Paket QGIS berisi `Peta_Sumbagsel.qgz` beserta layer GeoJSON dan atribut status; setelah diekstrak ke satu folder, project langsung menampilkan peta lengkap dengan warna status, batas, dan label sesuai level peta saat diekspor (EPSG:4326). Geometri batas wilayah (GADM 3.6 yang disederhanakan) tersimpan di `src/data/peta.json`.
@@ -92,6 +92,7 @@ Dashboard publik selalu tersedia di tautan pertama tanpa tombol admin. Area admi
 src/
   App.tsx                 tema, autentikasi, dan aksi admin
   api/supabase.ts         klien Supabase
+  api/dashboardData.ts    cache hasil agregasi dashboard bersama
   data/peta.json          geometri dan batas wilayah
   lib/
     routing.ts            pemetaan URL publik (/), admin (/admin), dan halaman admin

@@ -175,11 +175,11 @@
 /* ---------- KPI ---------- */
 .dash-kpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
-.dash-kpis.is-disease { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dash-kpis.kpi-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .dash-kpi {
   padding: 14px 16px;
   border: 1px solid var(--line);
@@ -357,7 +357,6 @@
   .dash-filter-row .ms summary { width: 100%; min-width: 0; }
   .dash-checks { grid-column: 1 / -1; }
   .dash-kpis { grid-template-columns: 1fr 1fr; }
-  .dash-kpis.is-disease { grid-template-columns: 1fr 1fr; }
   .dash-kpi { padding: 13px 14px; }
   .dash-kpi strong { font-size: 23px; }
   .dash-card-head { align-items: start; flex-direction: column; gap: 10px; padding: 15px 16px 10px; }
@@ -373,7 +372,6 @@
 }
 @media (max-width: 480px) {
   .dash-kpis { grid-template-columns: 1fr; }
-  .dash-kpis.is-disease { grid-template-columns: 1fr; }
   .dash-filter-row { grid-template-columns: 1fr; }
   .dash-checks { grid-column: auto; }
   .dash-coverage-kpis { grid-template-columns: 1fr 1fr; }

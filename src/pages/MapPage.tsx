@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { supabase } from '../api/supabase';
+import { clearDashboardCache, getDashboardData } from '../api/dashboardData';
 import MultiSelect from '../components/MultiSelect';
 import { numberFormat } from '../lib/constants';
 import {
@@ -32,7 +32,7 @@ import {
 } from '../lib/peta';
 import { downloadCsv, downloadJson, exportMapPng, type LegendItem } from '../lib/mapExport';
 import { exportQgisPackage } from '../lib/qgisExport';
-import type { ChartKey, ChartRow, DashboardData, MapRow } from '../types';
+import type { ChartKey, ChartRow, MapRow } from '../types';
 import '../styles/map.css';
 
 type SortKey = 'name' | 'm' | 'sp' | 'sg' | 'so';
@@ -352,31 +352,26 @@ export default function MapPage({ theme }: { theme: 'light' | 'dark' }) {
     let cancelled = false;
 
     async function load() {
-      if (!supabase) {
-        setError('Supabase belum dikonfigurasi. Isi .env.local lalu muat ulang halaman.');
-        setLoading(false);
-        return;
-      }
       setLoading(true);
       setError('');
-      const { data, error: rpcError } = await supabase.rpc('public_iv_lab_dashboard_data');
-      if (cancelled) return;
-      if (rpcError) {
-        setRows(null);
-        setError(rpcError.message);
+      try {
+        const payload = await getDashboardData();
+        if (cancelled) return;
+        const mapRows = Array.isArray(payload.map) ? payload.map : [];
+        setRows(mapRows);
+        setCharts(payload.charts);
+        const nextYears = new Set(
+          mapRows.map((row) => Number(row.year)).filter((year) => Number.isFinite(year))
+        );
+        setSelectedYears(nextYears);
+        setDiseases(new Set());
         setLoading(false);
-        return;
+      } catch (loadError) {
+        if (cancelled) return;
+        setRows(null);
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+        setLoading(false);
       }
-      const payload = data as DashboardData | null;
-      const mapRows = Array.isArray(payload?.map) ? payload.map : [];
-      setRows(mapRows);
-      setCharts(payload?.charts ?? null);
-      const nextYears = new Set(
-        mapRows.map((row) => Number(row.year)).filter((year) => Number.isFinite(year))
-      );
-      setSelectedYears(nextYears);
-      setDiseases(new Set());
-      setLoading(false);
     }
 
     void load();
@@ -1183,7 +1178,11 @@ export default function MapPage({ theme }: { theme: 'light' | 'dark' }) {
           <p>Sebaran hasil pengujian IV Lab di Sumatera Selatan, Lampung, Bangka Belitung, dan Bengkulu.</p>
         </div>
         <div className="dash-head-actions map-actions">
-          <button className="button button-outline" onClick={() => setReloadKey((key) => key + 1)} disabled={loading}>
+          <button
+            className="button button-outline"
+            onClick={() => { clearDashboardCache(); setReloadKey((key) => key + 1); }}
+            disabled={loading}
+          >
             {loading ? 'Memuat…' : 'Muat ulang data'}
           </button>
           <button className="button button-outline" onClick={() => setPresentation((value) => !value)}>

@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { clearDashboardCache } from './api/dashboardData';
 import { configured, supabase } from './api/supabase';
 import { parseCsv } from './lib/csv';
 import { nullable, numberFormat } from './lib/constants';
@@ -162,6 +163,11 @@ function App() {
     setImports((data ?? []) as ImportRow[]);
   }
 
+  async function refreshAfterChange() {
+    clearDashboardCache();
+    await Promise.all([loadSummary(), loadAdminRecords(), loadAdminImports()]);
+  }
+
   async function authenticateAdminSession(nextSession: Session) {
     if (!supabase) throw new Error('Supabase belum dikonfigurasi.');
     const { data: admin, error: adminError } = await supabase
@@ -309,7 +315,7 @@ function App() {
     }
 
     setBusy(false);
-    await Promise.all([loadSummary(), loadAdminRecords(), loadAdminImports()]);
+    await refreshAfterChange();
   }
 
   function requestDeleteImport(id: string) {
@@ -342,7 +348,7 @@ function App() {
       text: importRecord.status === 'legacy' ? 'Data lama tahun tersebut berhasil dihapus.' : 'File dan seluruh data impornya berhasil dihapus.',
       type: 'success'
     });
-    await Promise.all([loadSummary(), loadAdminRecords(), loadAdminImports()]);
+    await refreshAfterChange();
   }
 
   function requestDeleteAll() {
@@ -385,7 +391,7 @@ function App() {
       setImports([]);
       setFlash({ text: 'Seluruh data IV Lab berhasil dihapus.', type: 'success' });
     }
-    await Promise.all([loadSummary(), loadAdminRecords(), loadAdminImports()]);
+    await refreshAfterChange();
   }
 
   async function handleAddRecord(event: FormEvent<HTMLFormElement>) {
@@ -418,7 +424,7 @@ function App() {
     }
     formElement.reset();
     setFlash({ text: 'Data sampel berhasil disimpan.', type: 'success' });
-    await Promise.all([loadSummary(), loadAdminRecords(), loadAdminImports()]);
+    await refreshAfterChange();
   }
 
   async function handleImportCsv(file: File) {
@@ -478,7 +484,7 @@ function App() {
         const skipped = skippedMissingProvince ? `${numberFormat.format(skippedMissingProvince)} baris dilewati karena provinsi kosong. ` : '';
         const tracking = trackingError ? `Status daftar file gagal diperbarui: ${trackingError.message}. ` : '';
         setFlash({ text: `${partial}${skipped}Impor berhenti: ${error.message}.${tracking}`, type: 'error' });
-        await Promise.all([loadSummary(), loadAdminRecords(), loadAdminImports()]);
+        await refreshAfterChange();
         return;
       }
       saved += batch.length;
@@ -493,7 +499,7 @@ function App() {
     setFlash(trackingError
       ? { text: `${numberFormat.format(saved)} baris berhasil diimpor, tetapi status daftar file gagal diperbarui: ${trackingError.message}.${skipped}`, type: 'error' }
       : { text: `${numberFormat.format(saved)} baris berhasil diimpor.${skipped}`, type: 'success' });
-    await Promise.all([loadSummary(), loadAdminRecords(), loadAdminImports()]);
+    await refreshAfterChange();
   }
 
   function navigate(nextPage: Page) {
