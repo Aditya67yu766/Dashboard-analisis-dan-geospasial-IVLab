@@ -6,7 +6,6 @@ type LoginPageProps = {
   busy: boolean;
   flash: string;
   flashType: FlashType;
-  onPage: (page: 'home') => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
 
@@ -21,11 +20,10 @@ function connectionNotice(configured: boolean) {
   return null;
 }
 
-export default function LoginPage({ configured: isConfigured, busy, flash, flashType, onPage, onSubmit }: LoginPageProps) {
+export default function LoginPage({ configured: isConfigured, busy, flash, flashType, onSubmit }: LoginPageProps) {
   return (
     <main className="auth-shell">
       <section className="auth-card">
-        <button type="button" className="back-link" onClick={() => onPage('home')}>← Kembali ke beranda</button>
         <span className="eyebrow">Panel admin</span>
         <h1>Login admin</h1>
         <p>Masuk untuk menginput dan mengelola data laboratorium.</p>

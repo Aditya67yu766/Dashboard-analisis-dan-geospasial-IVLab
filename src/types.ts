@@ -1,4 +1,4 @@
-export type Page = 'home' | 'admin' | 'login' | 'charts' | 'map';
+export type Page = 'home' | 'charts' | 'map' | 'login' | 'admin-home' | 'admin';
 
 export type FlashType = 'success' | 'error' | 'info';
 

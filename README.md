@@ -26,6 +26,29 @@ npm run dev
 
 Di Vercel, impor repository ini dan tambahkan environment variables `VITE_SUPABASE_URL` serta `VITE_SUPABASE_ANON_KEY`, lalu deploy. Vercel akan menjalankan `npm run build` secara otomatis.
 
+## Dua tautan akses: publik dan admin
+
+Aplikasi tetap satu build, tetapi halamannya dipetakan ke URL sehingga dapat dibuka lewat dua tautan:
+
+| Tautan | Lokal | Vercel | Isi |
+| --- | --- | --- | --- |
+| **Link 1 — publik** | `http://localhost:5173/` | `https://<project>.vercel.app/` | Beranda user, Ringkasan Data, Peta Wilayah |
+| **Link 2 — admin** | `http://localhost:5173/admin` | `https://<project>.vercel.app/admin` | Login, beranda admin, dan panel pengelolaan data |
+
+Rute lengkapnya:
+
+- `/` — beranda publik
+- `/ringkasan-data` — dashboard olah data
+- `/peta-wilayah` — dashboard peta
+- `/admin` — login admin (atau beranda admin bila sesi masih aktif)
+- `/admin/panel` — panel impor, input manual, dan kelola data
+
+Tautan publik tidak menampilkan tombol **Login admin** maupun tombol admin lainnya. Tautan admin `/admin` langsung membuka form login; setelah berhasil login, admin diarahkan ke **beranda admin**, lalu dari situ membuka menu **Pengelolaan data** (`/admin/panel`).
+
+File [`vercel.json`](./vercel.json) meneruskan rute-rute tersebut ke `index.html`, jadi membuka atau me-refresh URL `/admin` langsung tetap berhasil di Vercel (Vite dev server melakukan hal yang sama saat lokal). Jika ingin memakai dua domain, misalnya `nama.vercel.app` dan `admin.nama.vercel.app`, arahkan keduanya ke deployment yang sama lalu bedakan berdasarkan hostname di `src/lib/routing.ts`.
+
+Pemisahan URL hanya memisahkan tampilan dan navigasi, bukan batas keamanan. Keamanan data tetap bergantung pada Supabase Authentication dan kebijakan RLS: hanya UUID yang terdaftar di `iv_lab_admins` yang dapat menulis data, dan fungsi agregasi publik tidak membuka data baris per baris.
+
 Kebijakan Row Level Security membatasi perubahan data ke UUID admin yang didaftarkan. Halaman publik hanya memanggil fungsi agregasi dan tidak dapat membaca kode sampel atau data baris per baris.
 
 ## Login admin dan sesi
@@ -61,16 +84,17 @@ Komponen filter checkbox bersama ada di `src/components/MultiSelect.tsx` dengan 
 
 Impor CSV dan input manual hanya tersedia di **Panel Admin**. Dashboard publik tidak menerima file CSV; data grafik dan peta dikirim melalui fungsi agregasi Supabase tanpa membuka kode sampel atau data baris per baris. Navigasi menggunakan menu di header aplikasi.
 
-Saat sesi admin aktif, menu dashboard disembunyikan; admin perlu **Keluar** terlebih dahulu untuk melihat dashboard publik.
+Dashboard publik selalu tersedia di tautan pertama tanpa tombol admin. Area admin tidak menyediakan tautan langsung ke beranda pengguna: buka `/admin`, login, lalu gunakan menu **Pengelolaan data** di beranda admin. Tombol **Keluar** mengakhiri sesi dan kembali ke form login. Untuk kembali ke situs publik, buka URL `/` secara terpisah.
 
 ## Struktur utama
 
 ```
 src/
-  App.tsx                 routing, tema, autentikasi, dan aksi admin
+  App.tsx                 tema, autentikasi, dan aksi admin
   api/supabase.ts         klien Supabase
   data/peta.json          geometri dan batas wilayah
   lib/
+    routing.ts            pemetaan URL publik (/), admin (/admin), dan halaman admin
     constants.ts          konstanta dan normalisasi tanggal
     csv.ts                parsing CSV impor
     peta.ts               pencocokan wilayah, agregasi peta, dan geometri

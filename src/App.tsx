@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { configured, supabase } from './api/supabase';
 import { parseCsv } from './lib/csv';
 import { nullable, numberFormat } from './lib/constants';
+import { isAdminArea, normalizePage, pageFromLocation, writeLocation } from './lib/routing';
 import AdminPage from './pages/AdminPage';
 import ChartsPage from './pages/ChartsPage';
 import HomePage from './pages/HomePage';
@@ -26,7 +27,7 @@ function errorMessage(error: unknown): string {
 }
 
 function App() {
-  const [page, setPage] = useState<Page>('home');
+  const [page, setPage] = useState<Page>(() => pageFromLocation());
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
       return localStorage.getItem('thm') === 'dark' ? 'dark' : 'light';
@@ -63,9 +64,11 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let adminReady = false;
 
     async function initialize() {
-      if (supabase) {
+      // Sesi admin hanya relevan pada tautan admin (/admin dan /admin/panel).
+      if (supabase && isAdminArea(pageFromLocation())) {
         const { data, error } = await supabase.auth.getSession();
         if (cancelled) return;
         if (error) {
@@ -73,12 +76,14 @@ function App() {
         } else if (data.session) {
           try {
             await authenticateAdminSession(data.session as Session);
+            adminReady = true;
           } catch (authError) {
             const { error: signOutError } = await supabase.auth.signOut();
             if (cancelled) return;
             setSession(null);
             setIsAdmin(false);
             setPage('login');
+            writeLocation('login', true);
             setFlash({
               text: `${errorMessage(authError)}${signOutError ? ` Sesi gagal ditutup: ${signOutError.message}` : ''}`,
               type: 'error'
@@ -86,7 +91,13 @@ function App() {
           }
         }
       }
-      if (!cancelled) await loadSummary();
+      if (cancelled) return;
+      if (pageFromLocation() === 'admin' && !adminReady) {
+        // Akses langsung ke /admin/panel tanpa sesi diarahkan ke halaman login.
+        writeLocation('login', true);
+        setPage('login');
+      }
+      await loadSummary();
     }
 
     void initialize();
@@ -94,6 +105,17 @@ function App() {
     // The initial session check intentionally runs once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const next = normalizePage(pageFromLocation(), isAdmin);
+      writeLocation(next, true);
+      setPage(next);
+      setFlash(null);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isAdmin]);
 
   async function loadSummary() {
     if (!supabase) return;
@@ -152,7 +174,9 @@ function App() {
 
     setSession(nextSession);
     setIsAdmin(true);
-    setPage('admin');
+    // Setelah login selalu masuk ke beranda admin, bukan langsung ke panel.
+    setPage('admin-home');
+    writeLocation('admin-home', true);
     setFlash({ text: 'Berhasil masuk.', type: 'success' });
     await Promise.all([loadAdminRecords(), loadAdminImports()]);
   }
@@ -180,6 +204,7 @@ function App() {
       setSession(null);
       setIsAdmin(false);
       setPage('login');
+      writeLocation('login', true);
       setFlash({
         text: `${errorMessage(authError)}${signOutError ? ` Sesi gagal ditutup: ${signOutError.message}` : ''}`,
         type: 'error'
@@ -201,7 +226,8 @@ function App() {
     setReauth(null);
     setRecords([]);
     setImports([]);
-    setPage('home');
+    setPage('login');
+    writeLocation('login', true);
     setFlash(null);
   }
 
@@ -471,46 +497,68 @@ function App() {
   }
 
   function navigate(nextPage: Page) {
-    if (isAdmin && (nextPage === 'charts' || nextPage === 'map')) {
-      setPage('admin');
-      setFlash({ text: 'Keluar dari akun admin terlebih dahulu untuk melihat dashboard.', type: 'info' });
-      return;
-    }
-    if (nextPage === 'admin' && !isAdmin) {
-      setPage('login');
-      setFlash(null);
-      return;
-    }
-    setPage(nextPage);
+    const target = normalizePage(nextPage, isAdmin);
+    setPage(target);
+    writeLocation(target);
     setFlash(null);
-    if (nextPage === 'admin') {
+    if (target === 'admin') {
       void loadAdminRecords();
       void loadAdminImports();
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  const navItems: Array<[Page, string]> = [['home', 'Beranda']];
-  if (!isAdmin) {
-    navItems.push(['charts', 'Ringkasan Data'], ['map', 'Peta Wilayah']);
-  }
+  const navItems: Array<[Page, string]> = [
+    ['home', 'Beranda'],
+    ['charts', 'Ringkasan Data'],
+    ['map', 'Peta Wilayah']
+  ];
   const flashText = flash?.text ?? '';
   const flashType: FlashType = flash?.type ?? 'success';
+  const loginPanel = (
+    <LoginPage
+      configured={configured}
+      busy={busy}
+      flash={flashText}
+      flashType={flashType}
+      onSubmit={handleSignIn}
+    />
+  );
+  const adminArea = isAdminArea(page);
 
   return (
     <div className={`app-shell${page === 'charts' || page === 'map' ? ' dash-mode' : ''}`}>
       <header className="site-header">
-        <button className="brand" onClick={() => navigate('home')} aria-label="Pantau Penyakit beranda">
+        <button
+          className="brand"
+          onClick={() => navigate(adminArea ? (isAdmin ? 'admin-home' : 'login') : 'home')}
+          aria-label="Pantau Penyakit beranda"
+        >
           <img className="brand-logo" src="/logo-bv-lampung.png" alt="" />
           <span><strong>Pantau Penyakit</strong><small>Balai Veteriner Lampung</small></span>
         </button>
-        <nav className="main-nav" aria-label="Navigasi utama">
-          {navItems.map(([target, label]) => (
-            <button key={target} className={page === target ? 'active' : ''} onClick={() => navigate(target)}>
-              {label}
-            </button>
-          ))}
-        </nav>
+
+        {adminArea ? (
+          isAdmin ? (
+            <nav className="main-nav" aria-label="Navigasi admin">
+              <button className={page === 'admin-home' ? 'active' : ''} onClick={() => navigate('admin-home')}>
+                Beranda admin
+              </button>
+              <button className={page === 'admin' ? 'active' : ''} onClick={() => navigate('admin')}>
+                Pengelolaan data
+              </button>
+            </nav>
+          ) : null
+        ) : (
+          <nav className="main-nav" aria-label="Navigasi utama">
+            {navItems.map(([target, label]) => (
+              <button key={target} className={page === target ? 'active' : ''} onClick={() => navigate(target)}>
+                {label}
+              </button>
+            ))}
+          </nav>
+        )}
+
         <div className="header-actions">
           <button
             className="theme-toggle"
@@ -520,52 +568,38 @@ function App() {
           >
             {theme === 'dark' ? 'Terang' : 'Gelap'}
           </button>
-          {isAdmin ? (
-            <>
-              <button className="button button-outline" onClick={() => navigate('admin')}>Panel admin</button>
-              <button className="button button-dark" onClick={() => void handleSignOut()}>Keluar</button>
-            </>
-          ) : (
-            <button className="button button-dark" onClick={() => navigate('login')}>Login admin</button>
-          )}
+          {adminArea && isAdmin ? (
+            <button className="button button-dark" onClick={() => void handleSignOut()}>Keluar</button>
+          ) : null}
         </div>
       </header>
 
       {page === 'home' ? (
-        isAdmin ? (
-          <AdminHomePage
-            summary={summary}
-            summaryError={summaryError}
-            configured={configured}
-            flash={flashText}
-            flashType={flashType}
-            onPage={(target) => navigate(target)}
-            onLogout={() => void handleSignOut()}
-            onManage={() => navigate('admin')}
-          />
-        ) : (
-          <HomePage
-            summary={summary}
-            summaryError={summaryError}
-            configured={configured}
-            isAdmin={isAdmin}
-            flash={flashText}
-            flashType={flashType}
-            onPage={(target) => navigate(target)}
-          />
-        )
-      ) : null}
-
-      {page === 'login' ? (
-        <LoginPage
+        <HomePage
+          summary={summary}
+          summaryError={summaryError}
           configured={configured}
-          busy={busy}
+          isAdmin={false}
           flash={flashText}
           flashType={flashType}
-          onPage={() => navigate('home')}
-          onSubmit={handleSignIn}
+          onPage={(target) => navigate(target)}
         />
       ) : null}
+
+      {page === 'admin-home' && isAdmin ? (
+        <AdminHomePage
+          summary={summary}
+          summaryError={summaryError}
+          configured={configured}
+          flash={flashText}
+          flashType={flashType}
+          onPage={(target) => navigate(target)}
+          onLogout={() => void handleSignOut()}
+          onManage={() => navigate('admin')}
+        />
+      ) : null}
+
+      {page === 'login' || (page === 'admin-home' && !isAdmin) ? loginPanel : null}
 
       {page === 'admin' ? (
         isAdmin ? (
@@ -586,16 +620,7 @@ function App() {
             onRefreshImports={() => void loadAdminImports()}
             onDeleteAll={requestDeleteAll}
           />
-        ) : (
-          <LoginPage
-            configured={configured}
-            busy={busy}
-            flash={flashText}
-            flashType={flashType}
-            onPage={() => navigate('home')}
-            onSubmit={handleSignIn}
-          />
-        )
+        ) : loginPanel
       ) : null}
 
       {page === 'charts' ? <ChartsPage theme={theme} /> : null}

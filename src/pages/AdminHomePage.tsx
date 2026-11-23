@@ -125,10 +125,7 @@ export default function AdminHomePage({
       <section className="admin-warning-panel">
         <div>
           <strong>Perhatian</strong>
-          <p>
-            Halaman ini hanya untuk administrator yang berwenang. Jika Anda bukan admin, silakan gunakan{' '}
-            <button className="text-link" onClick={() => onPage('charts')}>tampilan publik</button> sebagai pengunjung biasa.
-          </p>
+          <p>Halaman ini hanya untuk administrator yang berwenang.</p>
         </div>
       </section>
     </main>
