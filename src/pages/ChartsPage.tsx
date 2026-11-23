@@ -4,7 +4,7 @@ import type { ChartConfiguration, Plugin } from 'chart.js';
 import { clearDashboardCache, getCachedDashboardData, getDashboardData, hasDashboardCache } from '../api/dashboardData';
 import MultiSelect from '../components/MultiSelect';
 import { numberFormat } from '../lib/constants';
-import { diseaseGroup } from '../lib/peta';
+import { diseaseGroup } from '../lib/disease';
 import type { ChartKey, ChartRow, MapRow } from '../types';
 import '../styles/charts.css';
 

@@ -1,16 +1,19 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
 import { clearDashboardCache, prefetchDashboardData } from './api/dashboardData';
 import { configured, supabase } from './api/supabase';
 import { parseCsv } from './lib/csv';
 import { nullable, numberFormat } from './lib/constants';
 import { isAdminArea, normalizePage, pageFromLocation, writeLocation } from './lib/routing';
 import AdminPage from './pages/AdminPage';
-import ChartsPage from './pages/ChartsPage';
 import HomePage from './pages/HomePage';
 import AdminHomePage from './pages/AdminHomePage';
 import LoginPage from './pages/LoginPage';
-import MapPage from './pages/MapPage';
 import ReauthModal from './pages/ReauthModal';
+
+// Halaman dashboard publik dipisah dari bundle utama agar beranda lebih ringan.
+// AdminPage sengaja tetap di bundle utama: alur input admin tidak berubah.
+const ChartsPage = lazy(() => import('./pages/ChartsPage'));
+const MapPage = lazy(() => import('./pages/MapPage'));
 import type {
   FlashMessage,
   FlashType,
@@ -502,8 +505,14 @@ function App() {
     await refreshAfterChange();
   }
 
+  function prefetchDashboard(target?: 'charts' | 'map') {
+    if (!target || target === 'charts') void import('./pages/ChartsPage');
+    if (!target || target === 'map') void import('./pages/MapPage');
+    prefetchDashboardData();
+  }
+
   function prefetchFor(target: Page) {
-    if (target === 'charts' || target === 'map') prefetchDashboardData();
+    if (target === 'charts' || target === 'map') prefetchDashboard(target);
   }
 
   function navigate(nextPage: Page) {
@@ -599,7 +608,7 @@ function App() {
           flash={flashText}
           flashType={flashType}
           onPage={(target) => navigate(target)}
-          onPrefetch={() => prefetchDashboardData()}
+          onPrefetch={() => prefetchDashboard()}
         />
       ) : null}
 
@@ -640,8 +649,12 @@ function App() {
         ) : loginPanel
       ) : null}
 
-      {page === 'charts' ? <ChartsPage theme={theme} /> : null}
-      {page === 'map' ? <MapPage theme={theme} /> : null}
+      {page === 'charts' ? (
+        <Suspense fallback={null}><ChartsPage theme={theme} /></Suspense>
+      ) : null}
+      {page === 'map' ? (
+        <Suspense fallback={null}><MapPage theme={theme} /></Suspense>
+      ) : null}
 
       <footer className="site-footer">
         <span>Pantau Penyakit · Balai Veteriner Lampung</span>
