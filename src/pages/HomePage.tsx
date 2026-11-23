@@ -9,6 +9,7 @@ type HomePageProps = {
   flash: string;
   flashType: string;
   onPage: (page: 'charts' | 'map') => void;
+  onPrefetch?: () => void;
 };
 
 function connectionNotice({ configured, summaryError, summary }: Pick<HomePageProps, 'configured' | 'summaryError' | 'summary'>) {
@@ -63,10 +64,15 @@ function SummaryPanel({ summary }: { summary: Summary | null }) {
   );
 }
 
-function dashboardCards(onPage: (page: 'charts' | 'map') => void) {
+function dashboardCards(onPage: (page: 'charts' | 'map') => void, onPrefetch?: () => void) {
   return (
     <div className="dashboard-grid">
-      <button className="dashboard-card" onClick={() => onPage('charts')}>
+      <button
+        className="dashboard-card"
+        onClick={() => onPage('charts')}
+        onMouseEnter={onPrefetch}
+        onFocus={onPrefetch}
+      >
         <span className="card-index">01</span>
         <strong>Ringkasan Data</strong>
         <span className="card-copy">
@@ -75,7 +81,12 @@ function dashboardCards(onPage: (page: 'charts' | 'map') => void) {
         </span>
         <span className="card-link">Buka dashboard</span>
       </button>
-      <button className="dashboard-card" onClick={() => onPage('map')}>
+      <button
+        className="dashboard-card"
+        onClick={() => onPage('map')}
+        onMouseEnter={onPrefetch}
+        onFocus={onPrefetch}
+      >
         <span className="card-index">02</span>
         <strong>Peta Wilayah</strong>
         <span className="card-copy">
@@ -88,7 +99,7 @@ function dashboardCards(onPage: (page: 'charts' | 'map') => void) {
   );
 }
 
-export default function HomePage({ summary, summaryError, configured, isAdmin, flash, flashType, onPage }: HomePageProps) {
+export default function HomePage({ summary, summaryError, configured, isAdmin, flash, flashType, onPage, onPrefetch }: HomePageProps) {
   return (
     <main>
       <section className="hero">
@@ -101,8 +112,22 @@ export default function HomePage({ summary, summaryError, configured, isAdmin, f
               Data agregat tersaji publik; detail sampel dikelola melalui panel admin.
             </p>
             <div className="hero-actions">
-              <button className="button button-cream" onClick={() => onPage('charts')}>Lihat ringkasan data</button>
-              <button className="hero-text-link" onClick={() => onPage('map')}>Lihat peta wilayah</button>
+              <button
+                className="button button-cream"
+                onClick={() => onPage('charts')}
+                onMouseEnter={onPrefetch}
+                onFocus={onPrefetch}
+              >
+                Lihat ringkasan data
+              </button>
+              <button
+                className="hero-text-link"
+                onClick={() => onPage('map')}
+                onMouseEnter={onPrefetch}
+                onFocus={onPrefetch}
+              >
+                Lihat peta wilayah
+              </button>
             </div>
           </div>
           <SummaryPanel summary={summary} />
@@ -119,7 +144,7 @@ export default function HomePage({ summary, summaryError, configured, isAdmin, f
               <p>Grafik ringkasan atau sebaran wilayah, sesuai kebutuhan Anda.</p>
             </div>
           </div>
-          {dashboardCards(onPage)}
+          {dashboardCards(onPage, onPrefetch)}
         </section>
       )}
 

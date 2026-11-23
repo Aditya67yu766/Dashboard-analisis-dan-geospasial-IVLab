@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { clearDashboardCache, getDashboardData } from '../api/dashboardData';
+import { clearDashboardCache, getCachedDashboardData, getDashboardData, hasDashboardCache } from '../api/dashboardData';
 import MultiSelect from '../components/MultiSelect';
 import { numberFormat } from '../lib/constants';
 import {
@@ -312,9 +312,12 @@ function fileSlug(value: string): string {
 }
 
 export default function MapPage({ theme }: { theme: 'light' | 'dark' }) {
-  const [rows, setRows] = useState<MapRow[] | null>(null);
-  const [charts, setCharts] = useState<Record<ChartKey, ChartRow[]> | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<MapRow[] | null>(() => {
+    const cached = getCachedDashboardData();
+    return cached && Array.isArray(cached.map) ? cached.map : null;
+  });
+  const [charts, setCharts] = useState<Record<ChartKey, ChartRow[]> | null>(() => getCachedDashboardData()?.charts ?? null);
+  const [loading, setLoading] = useState(() => !hasDashboardCache());
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedYears, setSelectedYears] = useState<Set<number>>(new Set());
@@ -352,7 +355,7 @@ export default function MapPage({ theme }: { theme: 'light' | 'dark' }) {
     let cancelled = false;
 
     async function load() {
-      setLoading(true);
+      if (!hasDashboardCache()) setLoading(true);
       setError('');
       try {
         const payload = await getDashboardData();

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { clearDashboardCache } from './api/dashboardData';
+import { clearDashboardCache, prefetchDashboardData } from './api/dashboardData';
 import { configured, supabase } from './api/supabase';
 import { parseCsv } from './lib/csv';
 import { nullable, numberFormat } from './lib/constants';
@@ -502,6 +502,10 @@ function App() {
     await refreshAfterChange();
   }
 
+  function prefetchFor(target: Page) {
+    if (target === 'charts' || target === 'map') prefetchDashboardData();
+  }
+
   function navigate(nextPage: Page) {
     const target = normalizePage(nextPage, isAdmin);
     setPage(target);
@@ -558,7 +562,13 @@ function App() {
         ) : (
           <nav className="main-nav" aria-label="Navigasi utama">
             {navItems.map(([target, label]) => (
-              <button key={target} className={page === target ? 'active' : ''} onClick={() => navigate(target)}>
+              <button
+                key={target}
+                className={page === target ? 'active' : ''}
+                onClick={() => navigate(target)}
+                onMouseEnter={() => prefetchFor(target)}
+                onFocus={() => prefetchFor(target)}
+              >
                 {label}
               </button>
             ))}
@@ -589,6 +599,7 @@ function App() {
           flash={flashText}
           flashType={flashType}
           onPage={(target) => navigate(target)}
+          onPrefetch={() => prefetchDashboardData()}
         />
       ) : null}
 

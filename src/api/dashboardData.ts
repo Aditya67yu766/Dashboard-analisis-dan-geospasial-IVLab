@@ -21,6 +21,22 @@ export function clearDashboardCache(): void {
   generation += 1;
 }
 
+export function getCachedDashboardData(): DashboardData | null {
+  return cache && Date.now() - cachedAt < TTL ? cache : null;
+}
+
+export function hasDashboardCache(): boolean {
+  return getCachedDashboardData() !== null;
+}
+
+/** Ambil data lebih awal saat user mengarahkan kursor ke menu dashboard. */
+export function prefetchDashboardData(): void {
+  if (hasDashboardCache()) return;
+  void getDashboardData().catch(() => {
+    // Error ditangani oleh halaman saat benar-benar membutuhkan data.
+  });
+}
+
 export async function getDashboardData(): Promise<DashboardData> {
   if (cache && Date.now() - cachedAt < TTL) return cache;
   if (!pending) {

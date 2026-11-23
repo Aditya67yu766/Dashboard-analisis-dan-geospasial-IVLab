@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Chart from 'chart.js/auto';
 import type { ChartConfiguration, Plugin } from 'chart.js';
-import { clearDashboardCache, getDashboardData } from '../api/dashboardData';
+import { clearDashboardCache, getCachedDashboardData, getDashboardData, hasDashboardCache } from '../api/dashboardData';
 import MultiSelect from '../components/MultiSelect';
 import { numberFormat } from '../lib/constants';
 import { diseaseGroup } from '../lib/peta';
@@ -269,9 +269,12 @@ const valueLabelPlugin: Plugin<'bar'> = {
 type ChartsPageProps = { theme: 'light' | 'dark' };
 
 export default function ChartsPage({ theme }: ChartsPageProps) {
-  const [charts, setCharts] = useState<Record<ChartKey, ChartRow[]> | null>(null);
-  const [mapRows, setMapRows] = useState<MapRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [charts, setCharts] = useState<Record<ChartKey, ChartRow[]> | null>(() => getCachedDashboardData()?.charts ?? null);
+  const [mapRows, setMapRows] = useState<MapRow[]>(() => {
+    const cached = getCachedDashboardData();
+    return cached && Array.isArray(cached.map) ? cached.map : [];
+  });
+  const [loading, setLoading] = useState(() => !hasDashboardCache());
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [tab, setTab] = useState<Tab>('multi');
@@ -298,7 +301,7 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      setLoading(true);
+      if (!hasDashboardCache()) setLoading(true);
       setError('');
       try {
         const payload = await getDashboardData();
