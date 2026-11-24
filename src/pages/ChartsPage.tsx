@@ -3,6 +3,8 @@ import Chart from 'chart.js/auto';
 import type { ChartConfiguration, Plugin } from 'chart.js';
 import { clearDashboardCache, getCachedDashboardData, getDashboardData, hasDashboardCache } from '../api/dashboardData';
 import MultiSelect from '../components/MultiSelect';
+import type { ChartExportPart, ChartExportStat, ChartPalette } from '../lib/chartExport';
+import { CHART_CONTENT_WIDTH, PRINT_CHART_PALETTE, downloadChartImages } from '../lib/chartExport';
 import { numberFormat } from '../lib/constants';
 import { diseaseGroup } from '../lib/disease';
 import type { ChartKey, ChartRow, MapRow } from '../types';
@@ -113,7 +115,7 @@ function groupRows(key: ViewKey, rows: ChartRow[]): GroupedRow[] {
 }
 
 function chartHeightFor(rowCount: number, horizontal: boolean): number {
-  if (horizontal) return Math.max(360, Math.min(1600, rowCount * 42));
+  if (horizontal) return Math.max(360, rowCount * 42);
   return Math.max(390, Math.min(720, rowCount * 26));
 }
 
@@ -241,7 +243,7 @@ function cssColor(name: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
-const valueLabelPlugin: Plugin<'bar'> = {
+const valueLabelPlugin = (labelColor: string): Plugin<'bar'> => ({
   id: 'valueLabels',
   afterDatasetsDraw(chart) {
     if ((chart.data.labels?.length ?? 0) > 30) return;
@@ -251,7 +253,7 @@ const valueLabelPlugin: Plugin<'bar'> = {
     const horizontal = chart.options.indexAxis === 'y';
     const { ctx } = chart;
     ctx.save();
-    ctx.fillStyle = cssColor('--ink', '#232b20');
+    ctx.fillStyle = labelColor;
     ctx.font = '600 12px "DM Sans", sans-serif';
     ctx.textAlign = horizontal ? 'left' : 'center';
     ctx.textBaseline = horizontal ? 'middle' : 'bottom';
@@ -264,7 +266,111 @@ const valueLabelPlugin: Plugin<'bar'> = {
     });
     ctx.restore();
   }
-};
+});
+
+function buildBarChartConfig(options: {
+  rows: GroupedRow[];
+  horizontal: boolean;
+  statsMode: boolean;
+  showPositive: boolean;
+  showSeropositive: boolean;
+  palette: ChartPalette;
+  devicePixelRatio?: number;
+}): ChartConfiguration<'bar'> {
+  const { rows, horizontal, statsMode, showPositive, showSeropositive, palette } = options;
+  const datasets: ChartConfiguration<'bar'>['data']['datasets'] = [
+    {
+      label: 'Jumlah sampel',
+      data: rows.map((row) => row.total),
+      backgroundColor: withAlpha(palette.sample, .38),
+      borderColor: palette.sample,
+      borderWidth: 1,
+      borderRadius: 3
+    }
+  ];
+  if (showPositive) {
+    datasets.push({
+      label: statsMode ? 'Positif / seropositif' : 'Positif',
+      data: rows.map((row) => row.positive),
+      backgroundColor: withAlpha(palette.positive, .42),
+      borderColor: palette.positive,
+      borderWidth: 1,
+      borderRadius: 3
+    });
+  }
+  if (showSeropositive && !statsMode) {
+    datasets.push({
+      label: 'Seropositif',
+      data: rows.map((row) => row.seropositive),
+      backgroundColor: withAlpha(palette.sero, .42),
+      borderColor: palette.sero,
+      borderWidth: 1,
+      borderRadius: 3
+    });
+  }
+
+  return {
+    type: 'bar',
+    data: {
+      labels: rows.map((row) => row.label),
+      datasets
+    },
+    options: {
+      indexAxis: horizontal ? 'y' : 'x',
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      ...(options.devicePixelRatio ? { devicePixelRatio: options.devicePixelRatio } : {}),
+      layout: { padding: { top: horizontal ? 4 : 24, right: horizontal ? 30 : 8 } },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            usePointStyle: true,
+            boxWidth: 8,
+            padding: 18,
+            color: palette.ink,
+            font: { size: 12, family: 'DM Sans' }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => `${context.dataset.label}: ${numberFormat.format(Number(context.raw) || 0)}`
+          }
+        }
+      },
+      scales: horizontal
+        ? {
+            x: {
+              beginAtZero: true,
+              grid: { color: palette.line, drawTicks: false },
+              border: { display: false },
+              ticks: { color: palette.muted, callback: (value) => numberFormat.format(Number(value)), font: { size: 11.5 } }
+            },
+            y: {
+              grid: { display: false },
+              border: { display: false },
+              ticks: { color: palette.ink, font: { size: 12, weight: 500 }, autoSkip: false }
+            }
+          }
+        : {
+            x: {
+              grid: { display: false },
+              border: { color: palette.line },
+              ticks: { color: palette.muted, maxRotation: 0, minRotation: 0, autoSkip: true, font: { size: 11.5 } }
+            },
+            y: {
+              beginAtZero: true,
+              grace: '8%',
+              grid: { color: palette.line, drawTicks: false },
+              border: { display: false },
+              ticks: { color: palette.muted, callback: (value) => numberFormat.format(Number(value)), font: { size: 11.5 } }
+            }
+          }
+    },
+    plugins: [valueLabelPlugin(palette.ink)]
+  };
+}
 
 type ChartsPageProps = { theme: 'light' | 'dark' };
 
@@ -295,6 +401,7 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
   const [tablePage, setTablePage] = useState(1);
   const [sortKey, setSortKey] = useState<SortKey>('label');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [exporting, setExporting] = useState<string | null>(null);
   const canvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
   const outbreakPositiveCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -600,110 +707,30 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
     });
     if (!chartsToRender.length) return;
 
-    const sampleColor = cssColor('--nov', '#8a8576');
-    const positiveColor = cssColor('--pos', '#c4402f');
-    const seroColor = cssColor('--neg', '#4a8a4f');
-    const ink = cssColor('--ink', '#232b20');
-    const muted = cssColor('--muted', '#5e6858');
-    const line = cssColor('--line', '#cbbda9');
+    const palette: ChartPalette = {
+      sample: cssColor('--nov', '#8a8576'),
+      positive: cssColor('--pos', '#c4402f'),
+      sero: cssColor('--neg', '#4a8a4f'),
+      ink: cssColor('--ink', '#232b20'),
+      muted: cssColor('--muted', '#5e6858'),
+      line: cssColor('--line', '#cbbda9')
+    };
 
     const instances = chartsToRender.map(({ canvas, rows, horizontal, key }) => {
       const keyDiseaseMode = selectedDiseases.size > 0 || key === 'by_disease';
       const keyStatsMode = keyDiseaseMode || regionMode;
-
-      const datasets: ChartConfiguration<'bar'>['data']['datasets'] = [
-        {
-          label: 'Jumlah sampel',
-          data: rows.map((row) => row.total),
-          backgroundColor: withAlpha(sampleColor, .38),
-          borderColor: sampleColor,
-          borderWidth: 1,
-          borderRadius: 3
-        }
-      ];
-      if (showPositive) {
-        datasets.push({
-          label: keyStatsMode ? 'Positif / seropositif' : 'Positif',
-          data: rows.map((row) => row.positive),
-          backgroundColor: withAlpha(positiveColor, .42),
-          borderColor: positiveColor,
-          borderWidth: 1,
-          borderRadius: 3
-        });
-      }
-      if (showSeropositive && !keyStatsMode) {
-        datasets.push({
-          label: 'Seropositif',
-          data: rows.map((row) => row.seropositive),
-          backgroundColor: withAlpha(seroColor, .42),
-          borderColor: seroColor,
-          borderWidth: 1,
-          borderRadius: 3
-        });
-      }
-
-      const config: ChartConfiguration<'bar'> = {
-        type: 'bar',
-        data: {
-          labels: rows.map((row) => row.label),
-          datasets
-        },
-        options: {
-          indexAxis: horizontal ? 'y' : 'x',
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: false,
-          layout: { padding: { top: horizontal ? 4 : 24, right: horizontal ? 30 : 8 } },
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: {
-                usePointStyle: true,
-                boxWidth: 8,
-                padding: 18,
-                color: ink,
-                font: { size: 12, family: 'DM Sans' }
-              }
-            },
-            tooltip: {
-              callbacks: {
-                label: (context) => `${context.dataset.label}: ${numberFormat.format(Number(context.raw) || 0)}`
-              }
-            }
-          },
-          scales: horizontal
-            ? {
-                x: {
-                  beginAtZero: true,
-                  grid: { color: line, drawTicks: false },
-                  border: { display: false },
-                  ticks: { color: muted, callback: (value) => numberFormat.format(Number(value)), font: { size: 11.5 } }
-                },
-                y: {
-                  grid: { display: false },
-                  border: { display: false },
-                  ticks: { color: ink, font: { size: 12, weight: 500 }, autoSkip: false }
-                }
-              }
-            : {
-                x: {
-                  grid: { display: false },
-                  border: { color: line },
-                  ticks: { color: muted, maxRotation: 0, minRotation: 0, autoSkip: true, font: { size: 11.5 } }
-                },
-                y: {
-                  beginAtZero: true,
-                  grace: '8%',
-                  grid: { color: line, drawTicks: false },
-                  border: { display: false },
-                  ticks: { color: muted, callback: (value) => numberFormat.format(Number(value)), font: { size: 11.5 } }
-                }
-              }
-        },
-        plugins: [valueLabelPlugin]
-      };
-
-      return new Chart(canvas, config);
+      const height = chartHeightFor(rows.length, horizontal);
+      return new Chart(canvas, buildBarChartConfig({
+        rows,
+        horizontal,
+        statsMode: keyStatsMode,
+        showPositive,
+        showSeropositive,
+        palette,
+        // Grafik yang sangat panjang diturunkan kerapatannya agar tidak
+        // melewati batas ukuran kanvas peramban.
+        devicePixelRatio: height > 2400 ? 1 : undefined
+      }));
     });
 
     return () => instances.forEach((chart) => chart.destroy());
@@ -804,7 +831,7 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
             }
           }
         },
-        plugins: [valueLabelPlugin]
+        plugins: [valueLabelPlugin(ink)]
       };
       instances.push(new Chart(canvas, config));
     };
@@ -926,12 +953,117 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
   }
 
   function downloadChart(key: ViewKey) {
-    const canvas = canvasRefs.current[key];
-    if (!canvas) return;
-    const link = document.createElement('a');
-    link.href = canvas.toDataURL('image/png');
-    link.download = `grafik_${key}.png`;
-    link.click();
+    void exportChart(key);
+  }
+
+  async function exportChart(key: ViewKey) {
+    const rows = groupedByKey[key] ?? [];
+    if (!rows.length || exporting) return;
+    setExporting(key);
+
+    const horizontal = key === 'by_disease' || key === 'by_method' || key === 'by_province' || key === 'by_regency' || key === 'by_district';
+    const statsMode = selectedDiseases.size > 0 || key === 'by_disease' || key === 'by_regency' || key === 'by_district';
+    // Grafik batang horizontal yang panjang dipecah menjadi dua gambar agar label
+    // kategori tetap terbaca saat diunduh.
+    const splitIntoTwo = horizontal && rows.length > 18;
+    const partCount = splitIntoTwo ? 2 : 1;
+    const perPart = splitIntoTwo ? Math.ceil(rows.length / 2) : rows.length;
+
+    const cleanups: Array<() => void> = [];
+    try {
+      if (document.fonts?.ready) {
+        try {
+          await document.fonts.ready;
+        } catch {
+          // Lanjutkan dengan font cadangan bila DM Sans gagal dimuat.
+        }
+      }
+
+      const parts: ChartExportPart[] = [];
+      for (let index = 0; index < partCount; index += 1) {
+        const start = index * perPart;
+        const chunk = rows.slice(start, start + perPart);
+        if (!chunk.length) continue;
+        const height = horizontal ? Math.max(320, chunk.length * 42 + 80) : Math.max(420, Math.min(720, chunk.length * 26));
+
+        const holder = document.createElement('div');
+        holder.style.cssText = `position:fixed;left:-20000px;top:0;width:${CHART_CONTENT_WIDTH}px;height:${height}px;pointer-events:none;opacity:0;`;
+        const canvas = document.createElement('canvas');
+        holder.appendChild(canvas);
+        document.body.appendChild(holder);
+
+        const chart = new Chart(canvas, buildBarChartConfig({
+          rows: chunk,
+          horizontal,
+          statsMode,
+          showPositive,
+          showSeropositive,
+          palette: PRINT_CHART_PALETTE,
+          devicePixelRatio: height > 2400 ? 1 : 2
+        }));
+        chart.update('none');
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        cleanups.push(() => {
+          chart.destroy();
+          holder.remove();
+        });
+
+        parts.push({
+          canvas,
+          width: CHART_CONTENT_WIDTH,
+          height,
+          caption: partCount > 1
+            ? `Bagian ${index + 1} dari ${partCount} · baris ${start + 1}–${Math.min(rows.length, start + chunk.length)} dari ${rows.length} kategori`
+            : undefined
+        });
+      }
+
+      const totals = rows.reduce(
+        (result, row) => ({
+          total: result.total + row.total,
+          positive: result.positive + row.positive,
+          seropositive: result.seropositive + row.seropositive
+        }),
+        { total: 0, positive: 0, seropositive: 0 }
+      );
+      const stats: ChartExportStat[] = [
+        { label: 'Jumlah sampel', value: numberFormat.format(totals.total) },
+        {
+          label: statsMode ? 'Positif / seropositif' : 'Positif',
+          value: `${numberFormat.format(totals.positive)} (${percent(totals.positive, totals.total)})`,
+          tone: 'positive'
+        }
+      ];
+      if (!statsMode) {
+        stats.push({
+          label: 'Seropositif',
+          value: `${numberFormat.format(totals.seropositive)} (${percent(totals.seropositive, totals.total)})`,
+          tone: 'sero'
+        });
+      }
+
+      const filterSlug = fileSlugText([
+        selectedYears.size ? `tahun-${[...selectedYears].sort().join('-')}` : 'semua-tahun',
+        selectedProvinces.size ? [...selectedProvinces].sort((a, b) => a.localeCompare(b, 'id')).join('-') : 'semua-provinsi',
+        selectedDiseases.size ? [...selectedDiseases].sort((a, b) => a.localeCompare(b, 'id')).join('-') : ''
+      ].filter(Boolean).join('_'));
+
+      await downloadChartImages({
+        title: VIEW_TITLES[key],
+        subtitle: `${subtitleParts.join(' · ')} · ${rows.length} ${DIMENSION_LABEL[key].toLowerCase()}`,
+        note: statsMode
+          ? 'Abu-abu = jumlah sampel · Merah = positif/seropositif. Data per penyakit diambil dari hasil uji pada RPC dashboard.'
+          : 'Abu-abu = jumlah sampel · Merah = positif · Hijau = seropositif. Angka dihitung dari sampel unik.',
+        stats,
+        parts,
+        baseName: `ringkasan_${fileSlugText(VIEW_TITLES[key])}_${filterSlug}`
+      });
+    } catch (exportError) {
+      console.error('Gagal mengekspor grafik PNG:', exportError);
+    } finally {
+      cleanups.forEach((cleanup) => cleanup());
+      setExporting(null);
+    }
   }
 
   function toggleDimension(key: 'by_method' | 'by_disease') {
@@ -1224,6 +1356,8 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
                 const chartRows = groupedByKey[key] ?? [];
                 const horizontal = key === 'by_disease' || key === 'by_method' || key === 'by_province' || key === 'by_regency' || key === 'by_district';
                 const keyStatsMode = selectedDiseases.size > 0 || key === 'by_disease' || key === 'by_regency' || key === 'by_district';
+                const chartHeight = chartHeightFor(chartRows.length, horizontal);
+                const chartScrollable = chartHeight > 620;
                 return (
                   <section className="dash-card panel" key={key}>
                     <div className="dash-card-head">
@@ -1234,24 +1368,33 @@ export default function ChartsPage({ theme }: ChartsPageProps) {
                       <button
                         className="button button-outline button-small"
                         onClick={() => downloadChart(key)}
-                        disabled={!chartRows.length}
+                        disabled={!chartRows.length || exporting === key}
                       >
-                        Unduh grafik PNG
+                        {exporting === key
+                          ? 'Menyiapkan…'
+                          : horizontal && chartRows.length > 18
+                            ? 'Unduh PNG (2 bagian)'
+                            : 'Unduh grafik PNG'}
                       </button>
                     </div>
                     {chartRows.length ? (
                       <>
-                        <div className="dash-chart-wrap" style={{ height: chartHeightFor(chartRows.length, horizontal) }}>
-                          <canvas
-                            ref={(element) => { canvasRefs.current[key] = element; }}
-                            aria-label={VIEW_TITLES[key]}
-                            role="img"
-                          />
+                        <div className={`dash-chart-scroll${chartScrollable ? ' is-scrollable' : ''}`}>
+                          <div className="dash-chart-wrap" style={{ height: chartHeight }}>
+                            <canvas
+                              ref={(element) => { canvasRefs.current[key] = element; }}
+                              aria-label={VIEW_TITLES[key]}
+                              role="img"
+                            />
+                          </div>
                         </div>
                         <p className="dash-chart-note">
                           {keyStatsMode
                             ? 'Abu-abu = jumlah sampel · Merah = positif/seropositif. Data per penyakit diambil dari hasil uji pada RPC dashboard.'
                             : 'Abu-abu = jumlah sampel · Merah = positif · Hijau = seropositif. Angka dihitung dari sampel unik.'}
+                          {chartScrollable
+                            ? ` Gulir di dalam area grafik untuk melihat seluruh ${numberFormat.format(chartRows.length)} kategori.`
+                            : ''}
                         </p>
                       </>
                     ) : (
