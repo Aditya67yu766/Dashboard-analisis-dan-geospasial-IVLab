@@ -59,18 +59,21 @@ Jika sebelumnya sudah menjalankan versi skema yang mewajibkan MFA, jalankan ulan
 
 Gunakan tombol **Keluar** setelah selesai bekerja. Sesi lokal juga berakhir saat halaman dimuat ulang atau tab ditutup.
 
-## Format impor CSV
+## Format impor CSV / Excel
 
-Panel Admin menerima dua format tanpa perlu mengubah file CSV:
+Panel Admin menerima file `.csv`, `.xlsx`, dan `.xls` tanpa perlu mengubah file sumber:
 
 1. **Format IV Lab saat ini** — kolom wajib `registration_date`, `kode_sampel`, `nama_uji`, `metode_uji`, `provinsi`.
 2. **Ekspor lama IV Lab** — misalnya `exportvv (2).csv`, yang setiap barisnya dibungkus satu tanda kutip dan memakai nama kolom seperti `prop`, `kab`, `kec`, `kodesampel`, `lab`, `tes`, `targetpenyakit`, dan `hasil`. Parser mendeteksi format ini otomatis, termasuk escape `\"` di dalam nilai.
+3. **Excel ekspor IV Lab** — misalnya `IVLAB_April-31 Desember 2023.xlsx` (sheet tunggal dengan 78 kolom, termasuk `registration_date`, `kode_sampel`, `nama_uji`, `metode_uji`, `provinsi`) dan `SMILE_jan-maret2023.xlsx` (32 kolom ala ekspor lama). Keduanya dibaca apa adanya.
+
+Untuk Excel, tanggal yang disimpan sebagai serial Excel (misalnya `45019` untuk 2023-04-03) dikonversi otomatis ke `YYYY-MM-DD`. Parsing berjalan di Web Worker agar tampilan tetap responsif; file besar seperti `IVLAB_April-31 Desember 2023.xlsx` dapat memakan waktu beberapa saat. Sheet tanpa kolom wajib dilewati, dan sheet dengan header di baris bukan pertama tetap dikenali.
 
 Pemetaan kolom ekspor lama ke field aplikasi:
 
 | Field aplikasi | Kolom yang dikenal (prioritas kiri ke kanan) |
 | --- | --- |
-| `registration_date` | `registration_date`, `tgljawab`, `tgs`, `tglkirim`, `tglterima`, `tgldist` |
+| `registration_date` | `registration_date`, `tgljawab`, `tgs`, `tglkirim`, `tglterima`, `tgldist`, `blnthn` |
 | `kode_sampel` | `kode_sampel`, `kodesampel` |
 | `nama_uji` (penyakit) | `nama_uji`, `targetpenyakit`, `target_penyakit`, `penyakit`, `namujilengkap` |
 | `metode_uji` | `metode_uji`, `tes`, `namujilengkap`, `lab` |
@@ -82,13 +85,13 @@ Pemetaan kolom ekspor lama ke field aplikasi:
 | `hewan` | `hewan`, `hwn` |
 | `jenis_layanan` | `jenis_layanan`, `jenislayanan` |
 
-`sample_analysis_number` tetap diambil dari kolom `sample_analysis_number` bila ada. Tanggal menerima `YYYY-MM-DD` atau `DD/MM/YYYY`. Untuk ekspor lama, `tgljawab` diprioritaskan karena kolom `blnthn` (periode laporan) berasal dari tanggal tersebut; urutan prioritasi dapat diubah di `src/lib/constants.ts` (`legacyRegistrationDateKeys`).
+`sample_analysis_number` tetap diambil dari kolom `sample_analysis_number` bila ada. Tanggal menerima `YYYY-MM-DD` atau `DD/MM/YYYY` (boleh disertai jam) dan, untuk Excel, serial tanggal. Untuk ekspor lama, `tgljawab` diprioritaskan karena kolom `blnthn` (periode laporan) berasal dari tanggal tersebut; urutan prioritasi dapat diubah di `src/lib/constants.ts` (`legacyRegistrationDateKeys`).
 
-Saat impor, baris dengan provinsi kosong atau tanggal tidak valid dilewati dan jumlahnya ditampilkan setelah proses. Kolom wajib lain yang kosong tetap menyebabkan impor berhenti dengan pesan kesalahan. Kolom `interpretasi_hasil` boleh kosong (atau tidak disertakan jika hasil belum tersedia); data akan tersimpan tanpa hasil dan tidak dihitung sebagai positif. Kolom kabupaten dan kecamatan dipakai untuk mencocokkan warna peta ke wilayahnya.
+Saat impor, baris dengan provinsi kosong atau tanggal tidak valid dilewati dan jumlahnya ditampilkan setelah proses. Pada CSV, kolom wajib lain yang kosong tetap menyebabkan impor berhenti dengan pesan kesalahan; pada Excel, baris seperti itu dilewati dan dihitung sebagai "kolom wajib kosong" agar satu baris buruk tidak menggagalkan seluruh file. Kolom `interpretasi_hasil` boleh kosong (atau tidak disertakan jika hasil belum tersedia); data akan tersimpan tanpa hasil dan tidak dihitung sebagai positif. Kolom kabupaten dan kecamatan dipakai untuk mencocokkan warna peta ke wilayahnya.
 
 Jika database Supabase sudah dibuat sebelumnya, jalankan ulang `supabase/schema.sql` agar kolom `interpretasi_hasil` menerima nilai kosong.
 
-Setiap file CSV yang diimpor admin menambahkan baris ke tabel data yang sama. File yang berisi beberapa tahun (misalnya ekspor 2018–2022) dipecah otomatis menjadi satu entri impor per tahun, sehingga tetap bisa dihapus per tahun. Data dari semua tahun tampil bersama di dashboard. Daftar impor di Panel Admin mencatat nama file, tahun, dan jumlah baris; menghapus satu file menghapus hanya baris dari impor tersebut. Mengimpor file yang sama lagi akan menambahkan duplikat. Data yang sudah ada sebelum daftar impor tersedia ditampilkan sebagai **Data lama** per tahun karena nama file sumbernya tidak tercatat; menghapus entri lama menghapus data lama pada tahun itu. Panel Admin juga menyediakan **Hapus semua data**, dengan konfirmasi mengetik `HAPUS SEMUA DATA`.
+Setiap file CSV/Excel yang diimpor admin menambahkan baris ke tabel data yang sama. File yang berisi beberapa tahun (misalnya ekspor 2018–2022) dipecah otomatis menjadi satu entri impor per tahun, sehingga tetap bisa dihapus per tahun. Data dari semua tahun tampil bersama di dashboard. Daftar impor di Panel Admin mencatat nama file, tahun, dan jumlah baris; menghapus satu file menghapus hanya baris dari impor tersebut. Mengimpor file yang sama lagi akan menambahkan duplikat. Data yang sudah ada sebelum daftar impor tersedia ditampilkan sebagai **Data lama** per tahun karena nama file sumbernya tidak tercatat; menghapus entri lama menghapus data lama pada tahun itu. Panel Admin juga menyediakan **Hapus semua data**, dengan konfirmasi mengetik `HAPUS SEMUA DATA`.
 
 ## Dashboard Olah Data dan Dashboard Peta
 
@@ -99,7 +102,7 @@ Kedua dashboard adalah halaman React yang mengambil data agregat langsung dari f
 
 Komponen filter checkbox bersama ada di `src/components/MultiSelect.tsx` dengan gaya di `src/styles/multiselect.css`.
 
-Impor CSV dan input manual hanya tersedia di **Panel Admin**. Dashboard publik tidak menerima file CSV; data grafik dan peta dikirim melalui fungsi agregasi Supabase tanpa membuka kode sampel atau data baris per baris. Navigasi menggunakan menu di header aplikasi.
+Impor CSV/Excel dan input manual hanya tersedia di **Panel Admin**. Dashboard publik tidak menerima file CSV/Excel; data grafik dan peta dikirim melalui fungsi agregasi Supabase tanpa membuka kode sampel atau data baris per baris. Navigasi menggunakan menu di header aplikasi.
 
 Dashboard publik selalu tersedia di tautan pertama tanpa tombol admin. Area admin tidak menyediakan tautan langsung ke beranda pengguna: buka `/admin`, login, lalu gunakan menu **Pengelolaan data** di beranda admin. Tombol **Keluar** mengakhiri sesi dan kembali ke form login. Untuk kembali ke situs publik, buka URL `/` secara terpisah.
 

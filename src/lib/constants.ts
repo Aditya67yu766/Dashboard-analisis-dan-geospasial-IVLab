@@ -9,12 +9,14 @@ export const requiredCsvFields = [
 // Ekspor lama IV Lab tidak memiliki kolom bernama registration_date.
 // `tgljawab` didahulukan karena kolom `blnthn` (periode laporan) dihitung
 // dari tanggal tersebut, lalu disusul tanggal sampling dan pengiriman.
+// `blnthn` dipakai paling akhir sebagai cadangan untuk rekap bulanan.
 export const legacyRegistrationDateKeys = [
   'tgljawab',
   'tgs',
   'tglkirim',
   'tglterima',
-  'tgldist'
+  'tgldist',
+  'blnthn'
 ];
 
 // Kunci = nama kolom kanonik aplikasi, nilai = alias yang dikenal.
@@ -45,7 +47,8 @@ export function nullable(value: unknown): string | null {
 
 export function normalizeDate(value: unknown): string | null {
   const text = String(value ?? '').trim();
-  let match = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  // Nilai dari Excel kadang menyertakan jam, misalnya "2023-04-03 00:00:00".
+  let match = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T].*)?$/);
   let year: number;
   let month: number;
   let day: number;
@@ -54,7 +57,7 @@ export function normalizeDate(value: unknown): string | null {
     month = Number(match[2]);
     day = Number(match[3]);
   } else {
-    match = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    match = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[ T].*)?$/);
     if (!match) return null;
     day = Number(match[1]);
     month = Number(match[2]);

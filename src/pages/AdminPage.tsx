@@ -11,7 +11,7 @@ type AdminPageProps = {
   flashType: FlashType;
   busy: boolean;
   onAddRecord: (event: FormEvent<HTMLFormElement>) => void;
-  onImportCsv: (file: File) => void;
+  onImportFile: (file: File) => void;
   onDeleteRecord: (id: string) => void;
   onDeleteImport: (id: string) => void;
   onLogout: () => void;
@@ -132,7 +132,7 @@ function RecordsTable({ records, onDeleteRecord }: { records: RecordRow[]; onDel
 export default function AdminPage(props: AdminPageProps) {
   const {
     records, recordsLoading, imports, importsLoading, flash, flashType, busy,
-    onAddRecord, onImportCsv, onDeleteRecord, onDeleteImport, onLogout,
+    onAddRecord, onImportFile, onDeleteRecord, onDeleteImport, onLogout,
     onRefreshRecords, onRefreshImports, onDeleteAll
   } = props;
 
@@ -175,22 +175,22 @@ export default function AdminPage(props: AdminPageProps) {
       <section className="admin-grid">
         <article className="panel admin-panel">
           <div className="panel-heading">
-            <div><h2>Impor dari CSV</h2></div>
+            <div><h2>Impor dari CSV / Excel</h2></div>
           </div>
           <p className="panel-description">
-            CSV format IV Lab (<code>{requiredCsvFields.join('</code>, <code>')}</code>) dan file ekspor lama dengan kolom seperti <code>prop</code>, <code>targetpenyakit</code>, dan <code>tgljawab</code> sama-sama diterima tanpa perlu diubah. Kolom hasil boleh kosong. File berisi beberapa tahun akan dipecah per tahun; file yang sama jangan diimpor dua kali.
+            CSV dan Excel (<code>.xlsx</code> / <code>.xls</code>) format IV Lab (<code>{requiredCsvFields.join(', ')}</code>) maupun ekspor lama dengan kolom seperti <code>prop</code>, <code>targetpenyakit</code>, dan <code>tgljawab</code> diterima tanpa perlu diubah. Kolom hasil boleh kosong. File berisi beberapa tahun akan dipecah per tahun; file yang sama jangan diimpor dua kali.
           </p>
-          <label className={`upload-zone${busy ? ' is-busy' : ''}`} htmlFor="csv-file">
-            <strong>{busy ? 'Memproses file…' : 'Pilih file CSV'}</strong>
-            <small>Format IV Lab baru maupun ekspor lama</small>
+          <label className={`upload-zone${busy ? ' is-busy' : ''}`} htmlFor="data-file">
+            <strong>{busy ? 'Memproses file…' : 'Pilih file CSV / Excel'}</strong>
+            <small>CSV atau Excel, format baru maupun ekspor lama</small>
             <input
               type="file"
-              id="csv-file"
-              accept=".csv,text/csv"
+              id="data-file"
+              accept=".csv,.xlsx,.xls,.xlsm,.xlsb,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
               disabled={busy}
               onChange={(event) => {
                 const file = event.target.files?.[0];
-                if (file) onImportCsv(file);
+                if (file) onImportFile(file);
                 event.target.value = '';
               }}
             />

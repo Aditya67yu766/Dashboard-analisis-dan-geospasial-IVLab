@@ -2,7 +2,9 @@ import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
 import './styles/charts.css';
 import { clearDashboardCache, prefetchDashboardData } from './api/dashboardData';
 import { configured, supabase } from './api/supabase';
-import { parseCsv, type ParsedCsv } from './lib/csv';
+import { parseCsv } from './lib/csv';
+import type { ParsedImport } from './lib/importRecord';
+import { parseSpreadsheet } from './lib/xlsx';
 import { nullable, numberFormat } from './lib/constants';
 import { isAdminArea, normalizePage, pageFromLocation, writeLocation } from './lib/routing';
 import AdminPage from './pages/AdminPage';
@@ -431,29 +433,41 @@ function App() {
     await refreshAfterChange();
   }
 
-  async function handleImportCsv(file: File) {
+  async function handleImportFile(file: File) {
     if (!supabase || !isAdmin || busy) return;
     setBusy(true);
-    setFlash({ text: `Memvalidasi ${file.name}…`, type: 'info' });
 
-    let parsed: ParsedCsv;
-    try {
-      parsed = await parseCsv(file, (processed, valid) => {
-        setFlash({
-          text: `Memvalidasi ${file.name}… ${numberFormat.format(processed)} baris dibaca, ${numberFormat.format(valid)} baris valid.`,
-          type: 'info'
-        });
+    const isSpreadsheet = /\.(xlsx|xls|xlsm|xlsb)$/i.test(file.name);
+    setFlash({
+      text: isSpreadsheet
+        ? `Membaca ${file.name}… File Excel besar dapat memerlukan beberapa saat.`
+        : `Memvalidasi ${file.name}…`,
+      type: 'info'
+    });
+
+    const reportProgress = (processed: number, valid: number) => {
+      setFlash({
+        text: `Memvalidasi ${file.name}… ${numberFormat.format(processed)} baris dibaca, ${numberFormat.format(valid)} baris valid.`,
+        type: 'info'
       });
+    };
+
+    let parsed: ParsedImport;
+    try {
+      parsed = isSpreadsheet
+        ? await parseSpreadsheet(file, reportProgress)
+        : await parseCsv(file, reportProgress);
     } catch (error) {
       setBusy(false);
       setFlash({ text: errorMessage(error), type: 'error' });
       return;
     }
 
-    const { rows, skippedMissingProvince, skippedInvalidDate, legacyFormat } = parsed;
+    const { rows, skippedMissingProvince, skippedInvalidDate, skippedIncomplete, legacyFormat } = parsed;
     const skippedParts = [
       skippedMissingProvince ? `${numberFormat.format(skippedMissingProvince)} baris tanpa provinsi` : '',
-      skippedInvalidDate ? `${numberFormat.format(skippedInvalidDate)} baris dengan tanggal tidak valid` : ''
+      skippedInvalidDate ? `${numberFormat.format(skippedInvalidDate)} baris dengan tanggal tidak valid` : '',
+      skippedIncomplete ? `${numberFormat.format(skippedIncomplete)} baris dengan kolom wajib kosong` : ''
     ].filter(Boolean);
     const skippedText = skippedParts.length ? ` ${skippedParts.join(' dan ')} dilewati.` : '';
 
@@ -463,9 +477,9 @@ function App() {
       return;
     }
 
-    // Satu CSV boleh berisi beberapa tahun; tiap tahun dicatat sebagai file
-    // tersendiri agar tetap bisa dihapus per tahun dari daftar impor.
-    const byYear = new Map<number, ParsedCsv['rows']>();
+    // Satu file (CSV maupun Excel) boleh berisi beberapa tahun; tiap tahun
+    // dicatat sebagai entri tersendiri agar tetap bisa dihapus per tahun.
+    const byYear = new Map<number, ParsedImport['rows']>();
     for (const row of rows) {
       const year = Number(row.registration_date.slice(0, 4));
       const group = byYear.get(year);
@@ -677,7 +691,7 @@ function App() {
             flashType={flashType}
             busy={busy}
             onAddRecord={handleAddRecord}
-            onImportCsv={(file) => void handleImportCsv(file)}
+            onImportFile={(file) => void handleImportFile(file)}
             onDeleteRecord={requestDeleteRecord}
             onDeleteImport={requestDeleteImport}
             onLogout={() => void handleSignOut()}
