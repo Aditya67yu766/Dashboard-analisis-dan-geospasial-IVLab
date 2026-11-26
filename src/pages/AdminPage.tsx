@@ -178,11 +178,11 @@ export default function AdminPage(props: AdminPageProps) {
             <div><h2>Impor dari CSV</h2></div>
           </div>
           <p className="panel-description">
-            CSV wajib memiliki kolom <code>{requiredCsvFields.join('</code>, <code>')}</code>. Kolom <code>interpretasi_hasil</code> boleh kosong. Satu file hanya untuk satu tahun; file yang sama jangan diimpor dua kali.
+            CSV format IV Lab (<code>{requiredCsvFields.join('</code>, <code>')}</code>) dan file ekspor lama dengan kolom seperti <code>prop</code>, <code>targetpenyakit</code>, dan <code>tgljawab</code> sama-sama diterima tanpa perlu diubah. Kolom hasil boleh kosong. File berisi beberapa tahun akan dipecah per tahun; file yang sama jangan diimpor dua kali.
           </p>
           <label className={`upload-zone${busy ? ' is-busy' : ''}`} htmlFor="csv-file">
             <strong>{busy ? 'Memproses file…' : 'Pilih file CSV'}</strong>
-            <small>Format data IV Lab yang sudah digunakan</small>
+            <small>Format IV Lab baru maupun ekspor lama</small>
             <input
               type="file"
               id="csv-file"
@@ -195,7 +195,7 @@ export default function AdminPage(props: AdminPageProps) {
               }}
             />
           </label>
-          <p className="form-hint">Kolom wilayah opsional: <code>kabupaten</code> dan <code>kecamatan</code>. Baris dengan provinsi kosong akan dilewati otomatis.</p>
+          <p className="form-hint">Kolom wilayah opsional: <code>kabupaten</code> dan <code>kecamatan</code>. Baris tanpa provinsi atau dengan tanggal tidak valid dilewati otomatis.</p>
         </article>
 
         <article className="panel admin-panel">

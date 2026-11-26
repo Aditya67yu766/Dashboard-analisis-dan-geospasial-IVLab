@@ -6,6 +6,34 @@ export const requiredCsvFields = [
   'provinsi'
 ];
 
+// Ekspor lama IV Lab tidak memiliki kolom bernama registration_date.
+// `tgljawab` didahulukan karena kolom `blnthn` (periode laporan) dihitung
+// dari tanggal tersebut, lalu disusul tanggal sampling dan pengiriman.
+export const legacyRegistrationDateKeys = [
+  'tgljawab',
+  'tgs',
+  'tglkirim',
+  'tglterima',
+  'tgldist'
+];
+
+// Kunci = nama kolom kanonik aplikasi, nilai = alias yang dikenal.
+// Alias pertama yang berisi nilai akan dipakai.
+export const csvFieldAliases: Record<string, string[]> = {
+  registration_date: ['registration_date', ...legacyRegistrationDateKeys],
+  kode_sampel: ['kode_sampel', 'kodesampel', 'noepi', 'no_registrasi'],
+  nama_uji: ['nama_uji', 'targetpenyakit', 'target_penyakit', 'penyakit', 'namujilengkap'],
+  metode_uji: ['metode_uji', 'tes', 'namujilengkap', 'lab'],
+  interpretasi_hasil: ['interpretasi_hasil', 'hasil', 'hsla', 'hslb'],
+  provinsi: ['provinsi', 'prop', 'province'],
+  kabupaten: ['kabupaten', 'kabupaten/kota', 'kab_kota', 'kab'],
+  kecamatan: ['kecamatan', 'kec'],
+  no_registrasi: ['no_registrasi', 'noepi', 'no_epi'],
+  sample_analysis_number: ['sample_analysis_number'],
+  hewan: ['hewan', 'hwn'],
+  jenis_layanan: ['jenis_layanan', 'jenislayanan']
+};
+
 export const provinces = ['Lampung', 'Sumatera Selatan', 'Bengkulu', 'Bangka Belitung'];
 
 export const numberFormat = new Intl.NumberFormat('id-ID');

@@ -61,17 +61,34 @@ Gunakan tombol **Keluar** setelah selesai bekerja. Sesi lokal juga berakhir saat
 
 ## Format impor CSV
 
-Kolom wajib mengikuti dashboard IV Lab saat ini:
+Panel Admin menerima dua format tanpa perlu mengubah file CSV:
 
-`registration_date`, `kode_sampel`, `nama_uji`, `metode_uji`, `provinsi`
+1. **Format IV Lab saat ini** — kolom wajib `registration_date`, `kode_sampel`, `nama_uji`, `metode_uji`, `provinsi`.
+2. **Ekspor lama IV Lab** — misalnya `exportvv (2).csv`, yang setiap barisnya dibungkus satu tanda kutip dan memakai nama kolom seperti `prop`, `kab`, `kec`, `kodesampel`, `lab`, `tes`, `targetpenyakit`, dan `hasil`. Parser mendeteksi format ini otomatis, termasuk escape `\"` di dalam nilai.
 
-Saat impor, baris dengan kolom `provinsi` kosong akan dilewati dan jumlahnya ditampilkan setelah proses. Kolom wajib lain yang kosong tetap menyebabkan impor berhenti dengan pesan kesalahan.
+Pemetaan kolom ekspor lama ke field aplikasi:
 
-Kolom `interpretasi_hasil` boleh kosong (atau tidak disertakan jika hasil belum tersedia); data akan tersimpan tanpa hasil dan tidak dihitung sebagai positif. Kolom opsional lain: `kabupaten`, `kabupaten/kota`, `kecamatan`, `no_registrasi`, `sample_analysis_number`, `hewan`, dan `jenis_layanan`. Tanggal menerima format `YYYY-MM-DD` atau `DD/MM/YYYY`. Kolom kabupaten dan kecamatan dipakai untuk mencocokkan warna peta ke wilayahnya.
+| Field aplikasi | Kolom yang dikenal (prioritas kiri ke kanan) |
+| --- | --- |
+| `registration_date` | `registration_date`, `tgljawab`, `tgs`, `tglkirim`, `tglterima`, `tgldist` |
+| `kode_sampel` | `kode_sampel`, `kodesampel` |
+| `nama_uji` (penyakit) | `nama_uji`, `targetpenyakit`, `target_penyakit`, `penyakit`, `namujilengkap` |
+| `metode_uji` | `metode_uji`, `tes`, `namujilengkap`, `lab` |
+| `interpretasi_hasil` | `interpretasi_hasil`, `hasil`, `hslA`, `hslB` |
+| `provinsi` | `provinsi`, `prop`, `province` |
+| `kabupaten` | `kabupaten`, `kabupaten/kota`, `kab_kota`, `kab` |
+| `kecamatan` | `kecamatan`, `kec` |
+| `no_registrasi` | `no_registrasi`, `noepi`, `no_epi` |
+| `hewan` | `hewan`, `hwn` |
+| `jenis_layanan` | `jenis_layanan`, `jenislayanan` |
+
+`sample_analysis_number` tetap diambil dari kolom `sample_analysis_number` bila ada. Tanggal menerima `YYYY-MM-DD` atau `DD/MM/YYYY`. Untuk ekspor lama, `tgljawab` diprioritaskan karena kolom `blnthn` (periode laporan) berasal dari tanggal tersebut; urutan prioritasi dapat diubah di `src/lib/constants.ts` (`legacyRegistrationDateKeys`).
+
+Saat impor, baris dengan provinsi kosong atau tanggal tidak valid dilewati dan jumlahnya ditampilkan setelah proses. Kolom wajib lain yang kosong tetap menyebabkan impor berhenti dengan pesan kesalahan. Kolom `interpretasi_hasil` boleh kosong (atau tidak disertakan jika hasil belum tersedia); data akan tersimpan tanpa hasil dan tidak dihitung sebagai positif. Kolom kabupaten dan kecamatan dipakai untuk mencocokkan warna peta ke wilayahnya.
 
 Jika database Supabase sudah dibuat sebelumnya, jalankan ulang `supabase/schema.sql` agar kolom `interpretasi_hasil` menerima nilai kosong.
 
-Setiap file CSV yang diimpor admin menambahkan baris ke tabel data yang sama. Gunakan satu file untuk satu tahun; data 2021, lalu 2022, dan seterusnya akan tampil bersama di dashboard. Daftar impor di Panel Admin mencatat nama file, tahun, dan jumlah baris; menghapus satu file menghapus hanya baris dari impor tersebut. Mengimpor file yang sama lagi akan menambahkan duplikat. Data yang sudah ada sebelum daftar impor tersedia ditampilkan sebagai **Data lama** per tahun karena nama file sumbernya tidak tercatat; menghapus entri lama menghapus data lama pada tahun itu. Panel Admin juga menyediakan **Hapus semua data**, dengan konfirmasi mengetik `HAPUS SEMUA DATA`.
+Setiap file CSV yang diimpor admin menambahkan baris ke tabel data yang sama. File yang berisi beberapa tahun (misalnya ekspor 2018–2022) dipecah otomatis menjadi satu entri impor per tahun, sehingga tetap bisa dihapus per tahun. Data dari semua tahun tampil bersama di dashboard. Daftar impor di Panel Admin mencatat nama file, tahun, dan jumlah baris; menghapus satu file menghapus hanya baris dari impor tersebut. Mengimpor file yang sama lagi akan menambahkan duplikat. Data yang sudah ada sebelum daftar impor tersedia ditampilkan sebagai **Data lama** per tahun karena nama file sumbernya tidak tercatat; menghapus entri lama menghapus data lama pada tahun itu. Panel Admin juga menyediakan **Hapus semua data**, dengan konfirmasi mengetik `HAPUS SEMUA DATA`.
 
 ## Dashboard Olah Data dan Dashboard Peta
 

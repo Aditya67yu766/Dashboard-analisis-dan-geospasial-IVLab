@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
 import { clearDashboardCache, prefetchDashboardData } from './api/dashboardData';
 import { configured, supabase } from './api/supabase';
-import { parseCsv } from './lib/csv';
+import { parseCsv, type ParsedCsv } from './lib/csv';
 import { nullable, numberFormat } from './lib/constants';
 import { isAdminArea, normalizePage, pageFromLocation, writeLocation } from './lib/routing';
 import AdminPage from './pages/AdminPage';
@@ -435,73 +435,111 @@ function App() {
     setBusy(true);
     setFlash({ text: `Memvalidasi ${file.name}…`, type: 'info' });
 
-    let rows;
-    let skippedMissingProvince: number;
-    let dataYear: number;
+    let parsed: ParsedCsv;
     try {
-      const parsed = await parseCsv(file);
-      rows = parsed.rows;
-      skippedMissingProvince = parsed.skippedMissingProvince;
-      if (!rows.length) {
-        throw new Error(`Tidak ada baris valid untuk diimpor; ${numberFormat.format(skippedMissingProvince)} baris dilewati karena provinsi kosong.`);
-      }
-      const years = [...new Set(rows.map((row) => row.registration_date.slice(0, 4)))];
-      if (years.length !== 1) {
-        throw new Error(`Satu file hanya boleh berisi satu tahun. Tahun yang ditemukan: ${years.join(', ')}.`);
-      }
-      dataYear = Number(years[0]);
+      parsed = await parseCsv(file, (processed, valid) => {
+        setFlash({
+          text: `Memvalidasi ${file.name}… ${numberFormat.format(processed)} baris dibaca, ${numberFormat.format(valid)} baris valid.`,
+          type: 'info'
+        });
+      });
     } catch (error) {
       setBusy(false);
       setFlash({ text: errorMessage(error), type: 'error' });
       return;
     }
 
-    const { data: importRecord, error: importError } = await supabase
-      .from('iv_lab_imports')
-      .insert({
-        file_name: file.name,
-        data_year: dataYear,
-        skipped_province_count: skippedMissingProvince,
-        imported_by: session?.user.id
-      })
-      .select('id')
-      .single();
-    if (importError || !importRecord) {
+    const { rows, skippedMissingProvince, skippedInvalidDate, legacyFormat } = parsed;
+    const skippedParts = [
+      skippedMissingProvince ? `${numberFormat.format(skippedMissingProvince)} baris tanpa provinsi` : '',
+      skippedInvalidDate ? `${numberFormat.format(skippedInvalidDate)} baris dengan tanggal tidak valid` : ''
+    ].filter(Boolean);
+    const skippedText = skippedParts.length ? ` ${skippedParts.join(' dan ')} dilewati.` : '';
+
+    if (!rows.length) {
       setBusy(false);
-      setFlash({ text: `File gagal dicatat untuk impor: ${importError?.message ?? 'ID impor tidak tersedia.'}`, type: 'error' });
+      setFlash({ text: `Tidak ada baris valid untuk diimpor.${skippedText}`, type: 'error' });
       return;
     }
 
-    let saved = 0;
-    for (let index = 0; index < rows.length; index += 500) {
-      const batch = rows.slice(index, index + 500).map((row) => ({ ...row, import_id: importRecord.id }));
-      const { error } = await supabase.from('iv_lab_records').insert(batch);
-      if (error) {
-        const status = saved ? 'partial' : 'failed';
-        const { error: trackingError } = await supabase
-          .from('iv_lab_imports')
-          .update({ record_count: saved, status })
-          .eq('id', importRecord.id);
+    // Satu CSV boleh berisi beberapa tahun; tiap tahun dicatat sebagai file
+    // tersendiri agar tetap bisa dihapus per tahun dari daftar impor.
+    const byYear = new Map<number, ParsedCsv['rows']>();
+    for (const row of rows) {
+      const year = Number(row.registration_date.slice(0, 4));
+      const group = byYear.get(year);
+      if (group) group.push(row);
+      else byYear.set(year, [row]);
+    }
+    const years = [...byYear.keys()].sort((a, b) => a - b);
+    const multiYear = years.length > 1;
+    const fileSkippedProvince = multiYear ? 0 : skippedMissingProvince;
+
+    let savedTotal = 0;
+    let notice = '';
+
+    for (const year of years) {
+      const yearRows = byYear.get(year) ?? [];
+      const fileName = multiYear ? `${file.name} (${year})` : file.name;
+
+      const { data: importRecord, error: importError } = await supabase
+        .from('iv_lab_imports')
+        .insert({
+          file_name: fileName,
+          data_year: year,
+          skipped_province_count: fileSkippedProvince,
+          imported_by: session?.user.id
+        })
+        .select('id')
+        .single();
+      if (importError || !importRecord) {
         setBusy(false);
-        const partial = saved ? `${numberFormat.format(saved)} baris sudah tersimpan sebelum terjadi kesalahan. ` : '';
-        const skipped = skippedMissingProvince ? `${numberFormat.format(skippedMissingProvince)} baris dilewati karena provinsi kosong. ` : '';
-        const tracking = trackingError ? `Status daftar file gagal diperbarui: ${trackingError.message}. ` : '';
-        setFlash({ text: `${partial}${skipped}Impor berhenti: ${error.message}.${tracking}`, type: 'error' });
+        setFlash({ text: `File tahun ${year} gagal dicatat untuk impor: ${importError?.message ?? 'ID impor tidak tersedia.'}`, type: 'error' });
         await refreshAfterChange();
         return;
       }
-      saved += batch.length;
+
+      let saved = 0;
+      let failed = false;
+      for (let index = 0; index < yearRows.length; index += 1000) {
+        const batch = yearRows.slice(index, index + 1000).map((row) => ({ ...row, import_id: importRecord.id }));
+        const { error } = await supabase.from('iv_lab_records').insert(batch);
+        if (error) {
+          await supabase
+            .from('iv_lab_imports')
+            .update({ record_count: saved, status: saved ? 'partial' : 'failed' })
+            .eq('id', importRecord.id);
+          notice = `${fileName}: impor berhenti setelah ${numberFormat.format(saved)} baris. ${error.message}.`;
+          failed = true;
+          break;
+        }
+        saved += batch.length;
+        if ((index / 1000) % 10 === 0) {
+          setFlash({
+            text: `Menyimpan ${fileName}… ${numberFormat.format(saved)} dari ${numberFormat.format(yearRows.length)} baris.`,
+            type: 'info'
+          });
+        }
+      }
+      savedTotal += saved;
+      if (failed) break;
+
+      const { error: trackingError } = await supabase
+        .from('iv_lab_imports')
+        .update({ record_count: saved, skipped_province_count: fileSkippedProvince, status: 'completed' })
+        .eq('id', importRecord.id);
+      if (trackingError) {
+        notice = `Status daftar file tahun ${year} gagal diperbarui: ${trackingError.message}.`;
+      }
     }
 
-    const { error: trackingError } = await supabase
-      .from('iv_lab_imports')
-      .update({ record_count: saved, skipped_province_count: skippedMissingProvince, status: 'completed' })
-      .eq('id', importRecord.id);
     setBusy(false);
-    const skipped = skippedMissingProvince ? ` ${numberFormat.format(skippedMissingProvince)} baris dilewati karena provinsi kosong.` : '';
-    setFlash(trackingError
-      ? { text: `${numberFormat.format(saved)} baris berhasil diimpor, tetapi status daftar file gagal diperbarui: ${trackingError.message}.${skipped}`, type: 'error' }
-      : { text: `${numberFormat.format(saved)} baris berhasil diimpor.${skipped}`, type: 'success' });
+    const period = multiYear
+      ? `${numberFormat.format(years.length)} tahun (${years.join(', ')})`
+      : `tahun ${years[0]}`;
+    const formatInfo = legacyFormat ? ' Format ekspor lama dipetakan otomatis.' : '';
+    const message = `${numberFormat.format(savedTotal)} baris ${notice ? 'tersimpan' : 'berhasil diimpor'} untuk ${period}.${skippedText}${formatInfo} ${notice}`.trim();
+    setFlash({ text: message, type: notice ? 'error' : 'success' });
     await refreshAfterChange();
   }
 
