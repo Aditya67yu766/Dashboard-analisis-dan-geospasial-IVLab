@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
+import './styles/charts.css';
 import { clearDashboardCache, prefetchDashboardData } from './api/dashboardData';
 import { configured, supabase } from './api/supabase';
 import { parseCsv, type ParsedCsv } from './lib/csv';

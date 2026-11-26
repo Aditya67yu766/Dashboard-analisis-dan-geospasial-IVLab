@@ -8,7 +8,6 @@ import { CHART_CONTENT_WIDTH, PRINT_CHART_PALETTE, downloadChartImages } from '.
 import { numberFormat } from '../lib/constants';
 import { diseaseGroup } from '../lib/disease';
 import type { ChartKey, ChartRow, MapRow } from '../types';
-import '../styles/charts.css';
 
 type ViewKey = Exclude<ChartKey, 'by_disease_month' | 'by_regency_month' | 'by_district_month'> | 'by_disease' | 'by_regency' | 'by_district';
 type Tab = ViewKey | 'multi' | 'table' | 'coverage' | 'outbreak';
